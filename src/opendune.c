@@ -990,7 +990,12 @@ static void GameLoop_Main(void)
 
 	GUI_Mouse_Show_Safe();
 
+#if defined(SATURN)
+	/* Start skips the intro, from the first time on */
+	g_canSkipIntro = true;
+#else
 	g_canSkipIntro = File_Exists_Personal("ONETIME.DAT");
+#endif
 
 	for (;; sleepIdle()) {
 		if (g_gameMode == GM_MENU) {
