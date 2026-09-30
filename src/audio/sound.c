@@ -25,6 +25,7 @@
 static void *g_voiceData[NUM_VOICES];            /*!< Preloaded Voices sound data */
 static uint32 g_voiceDataSize[NUM_VOICES];       /*!< Preloaded Voices sound data size in byte */
 static const char *s_currentMusic = NULL;        /*!< Currently loaded music file. */
+static uint16 s_currentVoiceSet = 0xFFFE;        /*!< Voice set of the preloaded voices. */
 static uint16 s_spokenWords[NUM_SPEECH_PARTS];   /*!< Buffer with speech to play. */
 static int16 s_currentVoicePriority;            /*!< Priority of the currently playing Speech */
 
@@ -189,6 +190,78 @@ static void Voice_UnloadVoice(uint16 voice)
 }
 
 /**
+ * Get the file name of a voice in a voice set.
+ * @param voice The voice.
+ * @param voiceSet The voice set : a HouseID, or 0xFFFE (intro) or 0xFFFF (end).
+ * @param filename Where to write the file name.
+ * @param size Size of filename.
+ * @return False if the voice isn't part of the voice set.
+ */
+static bool Voice_GetFilename(uint16 voice, uint16 voiceSet, char *filename, size_t size)
+{
+	const char *str = g_table_voices[voice].string;
+	int prefixChar;
+
+	switch (*str) {
+		case '%':
+			if (voiceSet == 0xFFFF || voiceSet == 0xFFFE) return false;
+
+			switch (g_config.language) {
+				case LANGUAGE_FRENCH: prefixChar = 'F'; break;
+				case LANGUAGE_GERMAN: prefixChar = 'G'; break;
+				default: prefixChar = g_table_houseInfo[voiceSet].prefixChar;
+			}
+			snprintf(filename, size, str, prefixChar);
+			return true;
+
+		case '+':
+			if (voiceSet == 0xFFFF) return false;
+
+			switch (g_config.language) {
+				case LANGUAGE_FRENCH:  prefixChar = 'F'; break;
+				case LANGUAGE_GERMAN:  prefixChar = 'G'; break;
+				default: prefixChar = 'Z'; break;
+			}
+			snprintf(filename, size, str + 1, prefixChar);
+
+			/* XXX - In the 1.07us datafiles, a few files are named differently:
+			 *
+			 *  moveout.voc
+			 *  overout.voc
+			 *  report1.voc
+			 *  report2.voc
+			 *  report3.voc
+			 *
+			 * They come without letter in front of them. To make things a bit
+			 *  easier, just check if the file exists, then remove the first
+			 *  letter and see if it works then.
+			 */
+			if (!File_Exists(filename)) {
+				memmove(filename, filename + 1, strlen(filename));
+			}
+			return true;
+
+		case '-':
+			if (voiceSet != 0xFFFF) return false;
+			snprintf(filename, size, "%s", str + 1);
+			return true;
+
+		case '/':
+			if (voiceSet != 0xFFFE) return false;
+			snprintf(filename, size, "%s", str + 1);
+			return true;
+
+		case '?':
+			snprintf(filename, size, str + 1, g_playerHouseID < HOUSE_MAX ? g_table_houseInfo[g_playerHouseID].prefixChar : ' ');
+			return true;
+
+		default:
+			snprintf(filename, size, "%s", str);
+			return true;
+	}
+}
+
+/**
  * Load voices.
  * voiceSet 0xFFFE is for Game Intro.
  * voiceSet 0xFFFF is for Game End.
@@ -196,8 +269,6 @@ static void Voice_UnloadVoice(uint16 voice)
  */
 void Voice_LoadVoices(uint16 voiceSet)
 {
-	static uint16 currentVoiceSet = 0xFFFE;
-	int prefixChar = ' ';
 	uint16 voice;
 
 	if (g_enableVoices == 0) return;
@@ -206,7 +277,7 @@ void Voice_LoadVoices(uint16 voiceSet)
 		/* unload if necessary */
 		switch (g_table_voices[voice].string[0]) {
 			case '%':
-				if (g_config.language != LANGUAGE_ENGLISH || currentVoiceSet == voiceSet) {
+				if (g_config.language != LANGUAGE_ENGLISH || s_currentVoiceSet == voiceSet) {
 					if (voiceSet != 0xFFFF && voiceSet != 0xFFFE) break;
 				}
 
@@ -243,80 +314,22 @@ void Voice_LoadVoices(uint16 voiceSet)
 		}
 	}
 
-	if (currentVoiceSet == voiceSet) return;
+	if (s_currentVoiceSet == voiceSet) return;
 
 	for (voice = 0; voice < NUM_VOICES; voice++) {
 		char filename[16];
-		const char *str = g_table_voices[voice].string;
+		char type = g_table_voices[voice].string[0];
+
 		sleepIdle();	/* let a chance to update screen, etc. */
-		switch (*str) {
-			case '%':
-				if (g_voiceData[voice] != NULL ||
-						currentVoiceSet == voiceSet || voiceSet == 0xFFFF || voiceSet == 0xFFFE) break;
 
-				switch (g_config.language) {
-					case LANGUAGE_FRENCH: prefixChar = 'F'; break;
-					case LANGUAGE_GERMAN: prefixChar = 'G'; break;
-					default: prefixChar = g_table_houseInfo[voiceSet].prefixChar;
-				}
-				snprintf(filename, sizeof(filename), str, prefixChar);
+		/* '/' voices are loaded even when already loaded, as before */
+		if (g_voiceData[voice] != NULL && type != '/') continue;
+		if (type == '?') continue;	/* Do not preload */
+		if (!Voice_GetFilename(voice, voiceSet, filename, sizeof(filename))) continue;
 
-				g_voiceData[voice] = Sound_LoadVoc(filename, &g_voiceDataSize[voice]);
-				break;
-
-			case '+':
-				if (voiceSet == 0xFFFF || g_voiceData[voice] != NULL) break;
-
-				switch (g_config.language) {
-					case LANGUAGE_FRENCH:  prefixChar = 'F'; break;
-					case LANGUAGE_GERMAN:  prefixChar = 'G'; break;
-					default: prefixChar = 'Z'; break;
-				}
-				snprintf(filename, sizeof(filename), str + 1, prefixChar);
-
-				/* XXX - In the 1.07us datafiles, a few files are named differently:
-				 *
-				 *  moveout.voc
-				 *  overout.voc
-				 *  report1.voc
-				 *  report2.voc
-				 *  report3.voc
-				 *
-				 * They come without letter in front of them. To make things a bit
-				 *  easier, just check if the file exists, then remove the first
-				 *  letter and see if it works then.
-				 */
-				if (!File_Exists(filename)) {
-					memmove(filename, filename + 1, strlen(filename));
-				}
-
-				g_voiceData[voice] = Sound_LoadVoc(filename, &g_voiceDataSize[voice]);
-				break;
-
-			case '-':
-				if (voiceSet != 0xFFFF || g_voiceData[voice] != NULL) break;
-
-				g_voiceData[voice] = Sound_LoadVoc(str + 1, &g_voiceDataSize[voice]);
-				break;
-
-			case '/':
-				if (voiceSet != 0xFFFE) break;
-
-				g_voiceData[voice] = Sound_LoadVoc(str + 1, &g_voiceDataSize[voice]);
-				break;
-
-			case '?':
-				/* Do not preload */
-				break;
-
-			default:
-				if (g_voiceData[voice] != NULL) break;
-
-				g_voiceData[voice] = Sound_LoadVoc(str, &g_voiceDataSize[voice]);
-				break;
-		}
+		g_voiceData[voice] = Sound_LoadVoc(filename, &g_voiceDataSize[voice]);
 	}
-	currentVoiceSet = voiceSet;
+	s_currentVoiceSet = voiceSet;
 }
 
 /**
