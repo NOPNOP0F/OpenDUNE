@@ -7,7 +7,8 @@
  *   A            left mouse button (select, confirm, place; hold to drag)
  *   B            cancel (Esc)
  *   X Y Z R      the selected unit's command buttons 1-4 in the side bar;
- *                with a structure selected, X opens its menu (F3)
+ *                with a structure selected, X opens its menu (F3) and Y
+ *                repairs or upgrades it
  *   L (hold)     Shift: with a command button, Ambush / Area Guard
  *   Start        options (F2); C+Start: Mentat (F1)
  *   A+B+C+Start  leave for the BIOS screen
@@ -47,6 +48,10 @@ enum {
 	SCANCODE_F3 = 0x3D,
 	SCANCODE_RELEASED = 0x80
 };
+
+/* Dune II key code no key sends (between F12 and Scroll Lock), given to the
+ * Repair/Upgrade button, which has no shortcut of its own */
+enum { KEY_REPAIR_UPGRADE = 0x7C };
 
 #define PAD_DIRECTIONS (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)
 #define PAD_RESET (PAD_A | PAD_B | PAD_C | PAD_START)
@@ -109,6 +114,16 @@ static void PadSaturn_CommandButton(uint16 index)
 	Input_HandleInput(w->shortcut);
 }
 
+/* Press the selected structure's Repair/Upgrade button (widget 4), if shown. */
+static void PadSaturn_RepairUpgrade(void)
+{
+	Widget *w = GUI_Widget_Get_ByIndex(g_widgetLinkedListHead, 4);
+
+	if (w == NULL || w->flags.invisible) return;
+	w->shortcut = KEY_REPAIR_UPGRADE;
+	Input_HandleInput(KEY_REPAIR_UPGRADE);
+}
+
 void PadSaturn_Tick(void)
 {
 	uint16 pad = smpc_pad_state();
@@ -152,6 +167,7 @@ void PadSaturn_Tick(void)
 
 	if (g_selectionType == SELECTIONTYPE_STRUCTURE) {
 		if (pressed & PAD_X) PadSaturn_KeyTap(SCANCODE_F3);
+		if (pressed & PAD_Y) PadSaturn_RepairUpgrade();
 	} else {
 		if (pressed & PAD_X) PadSaturn_CommandButton(8);
 		if (pressed & PAD_Y) PadSaturn_CommandButton(9);
