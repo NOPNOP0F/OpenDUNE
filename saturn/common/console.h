@@ -7,6 +7,8 @@
 #ifndef SATURN_CONSOLE_H
 #define SATURN_CONSOLE_H
 
+enum { CONSOLE_LOG_SIZE = 8192 };
+
 extern void console_write(const char *text, int length);
 extern void console_release(void);
 extern void console_show(void);

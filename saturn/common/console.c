@@ -19,6 +19,12 @@ static enum { CONSOLE_OFF, CONSOLE_SHOWN, CONSOLE_RELEASED } s_state = CONSOLE_O
 static char s_text[ROWS][COLUMNS];
 static int s_row, s_column;
 
+/* Everything written, the last CONSOLE_LOG_SIZE bytes of it, for reading out
+ * of an emulator's memory dump (saturn/tools/ymir-dump.py finds it through
+ * the link map). */
+char console_log[CONSOLE_LOG_SIZE];
+uint32_t console_log_written;
+
 static void draw_char(int row, int column)
 {
 	const uint8_t *glyph;
@@ -75,6 +81,9 @@ void console_write(const char *text, int length)
 	int i;
 
 	if (s_state == CONSOLE_OFF) console_show();
+
+	for (i = 0; i < length; i++) console_log[(console_log_written + (uint32_t)i) % CONSOLE_LOG_SIZE] = text[i];
+	console_log_written += (uint32_t)length;
 
 	for (i = 0; i < length; i++) {
 		char c = text[i];
