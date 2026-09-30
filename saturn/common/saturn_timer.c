@@ -17,7 +17,11 @@ static void (*volatile s_vblankHook)(void);
 
 static uint16_t frt_read(void);
 
-static void vblank_in(void)
+/* The VBlank-in handler, entered through saturn_vblank_in_entry (irq_entry.S). */
+void saturn_vblank_in(void);
+extern void saturn_vblank_in_entry(void);
+
+void saturn_vblank_in(void)
 {
 	s_frameStart = frt_read();
 	s_frames++;
@@ -37,7 +41,7 @@ void saturn_timer_init(void)
 	/* free-running timer counts at the system clock / 8 (about 3.5 MHz) */
 	FRT_TCR = 0x00;
 
-	BIOS_SETUINT(SCU_VECTOR_VBLANK_IN, vblank_in);
+	BIOS_SETUINT(SCU_VECTOR_VBLANK_IN, saturn_vblank_in_entry);
 	BIOS_CHGSCUIM(~SCU_MASK_VBLANK_IN, 0);
 	cpu_interrupts_enable();
 }

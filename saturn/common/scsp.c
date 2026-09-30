@@ -226,7 +226,11 @@ void scsp_stop(int slot)
 
 static void (*s_timerHandler)(void);
 
-static void scsp_interrupt(void)
+/* The timer A handler, entered through scsp_timer_entry (irq_entry.S). */
+void scsp_timer_interrupt(void);
+extern void scsp_timer_entry(void);
+
+void scsp_timer_interrupt(void)
 {
 	if (!(SCSP_MCIPD & INT_TIMER_A)) return;
 	SCSP_MCIRE = INT_TIMER_A;
@@ -240,6 +244,6 @@ void scsp_timer_start(void (*handler)(void))
 	SCSP_MCIRE = 0x7FF;
 	SCSP_TIMER_A = TIMER_A_VALUE;
 	SCSP_MCIEB = INT_TIMER_A;
-	BIOS_SETUINT(SCU_VECTOR_SOUND, scsp_interrupt);
+	BIOS_SETUINT(SCU_VECTOR_SOUND, scsp_timer_entry);
 	BIOS_CHGSCUIM(~SCU_MASK_SOUND, 0);
 }
