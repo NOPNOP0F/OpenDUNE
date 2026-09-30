@@ -731,9 +731,9 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 {
 	static uint16 lastMove = 4;
 	Widget *line, *exitButton = NULL, *w;
-	bool first, last, hasList = false, pressB;
+	bool first, last, hasList = false, pressB, quiet = false;
 	uint32 sr;
-	int x, y;
+	int x, y, stick;
 
 	for (w = list; w != NULL; w = GUI_Widget_GetNext(w)) {
 		if (w->clickProc == &GUI_Mentat_List_Click) hasList = true;
@@ -761,7 +761,30 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 		s_focus = line;         /* entering: the selected subject */
 		lastMove = 4;
 	}
-	if (s_focus == NULL || s_focus->clickProc != &GUI_Mentat_List_Click) return false;
+
+	/* the 3D Controller's stick moves the selection too, a line each time
+	 * enough travel has been summed up (without the blip) */
+	sr = cpu_interrupts_disable();
+	stick = s_stickY;
+	if (stick >= STICK_STEP) s_stickY -= STICK_STEP;
+	else if (stick <= -STICK_STEP) s_stickY += STICK_STEP;
+	s_stickX = 0;
+	cpu_interrupts_restore(sr);
+	s_stickLast = false;
+
+	if (s_focus == NULL || s_focus->clickProc != &GUI_Mentat_List_Click) {
+		/* elsewhere (Exit): the selection shouldn't look like the focus */
+		GUI_Mentat_ShowHelpSelection(false);
+		return false;
+	}
+	GUI_Mentat_ShowHelpSelection(true);
+	if (*direction == NO_DIRECTION && stick >= STICK_STEP) {
+		*direction = 4;
+		quiet = true;
+	} else if (*direction == NO_DIRECTION && stick <= -STICK_STEP) {
+		*direction = 0;
+		quiet = true;
+	}
 
 	if (s_x != LIST_PARK_X || s_y != LIST_PARK_Y) PadSaturn_SetPosition(LIST_PARK_X, LIST_PARK_Y);
 
@@ -778,18 +801,19 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 	if (*direction == 0 && !first) {
 		lastMove = 0;
 		PadSaturn_Key(KEY_ARROW_UP);
-		PadSaturn_Blip();
-	} else if (*direction == 4 && last && exitButton != NULL) {
+		if (!quiet) PadSaturn_Blip();
+	} else if (*direction == 4 && last && exitButton != NULL && !quiet) {
 		s_focus = exitButton;
+		GUI_Mentat_ShowHelpSelection(false);
 		PadSaturn_WidgetPosition(exitButton, &x, &y);
 		PadSaturn_SetPosition((uint16)(x + exitButton->width / 2), (uint16)(y + exitButton->height / 2));
 		PadSaturn_Blip();
 		*direction = NO_DIRECTION;
 		return false;
-	} else if (*direction == 4) {
+	} else if (*direction == 4 && !last) {
 		lastMove = 4;
 		PadSaturn_Key(KEY_ARROW_DOWN);
-		PadSaturn_Blip();
+		if (!quiet) PadSaturn_Blip();
 	}
 	*direction = NO_DIRECTION;
 
@@ -836,6 +860,11 @@ static void PadSaturn_StickScroll(Widget *list)
 	Widget *w;
 	int sy;
 	uint32 sr;
+
+	/* on the Mentat's list the stick moves the selection (PadSaturn_MentatList) */
+	for (w = list; w != NULL; w = GUI_Widget_GetNext(w)) {
+		if (w->clickProc == &GUI_Mentat_List_Click) return;
+	}
 
 	sr = cpu_interrupts_disable();
 	sy = s_stickY;

@@ -25,6 +25,8 @@ extern bool GUI_Mentat_List_Click(struct Widget *w);
 /* The widget index of the selected help subject; whether it is the first
  * and the last of all. */
 extern uint16 GUI_Mentat_HelpSelection(bool *first, bool *last);
+/* Draw the selected help subject as selected (red), or as the others. */
+extern void GUI_Mentat_ShowHelpSelection(bool show);
 #endif
 extern void GUI_Mentat_ScrollBar_Draw(struct Widget *w);
 extern uint16 GUI_Mentat_Loop(const char *wsaFilename, char *pictureDetails, char *text, bool loopAnimation, struct Widget *w);

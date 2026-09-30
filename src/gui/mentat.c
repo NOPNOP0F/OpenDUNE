@@ -989,6 +989,18 @@ static void GUI_Mentat_ShowHelp(void)
  * @param w The widget.
  */
 #if defined(SATURN)
+void GUI_Mentat_ShowHelpSelection(bool show)
+{
+	Widget *w = GUI_Widget_Get_ByIndex(g_widgetMentatTail, s_selectedHelpSubject + 3);
+	uint8 colour = show ? 8 : 15;
+
+	if (w == NULL || w->stringID != 0x31 || w->fgColourNormal == colour) return;
+	w->fgColourNormal = colour;
+	w->fgColourDown = colour;
+	w->fgColourSelected = colour;
+	GUI_Widget_Draw(w);
+}
+
 uint16 GUI_Mentat_HelpSelection(bool *first, bool *last)
 {
 	*first = s_topHelpList + s_selectedHelpSubject == 0;
