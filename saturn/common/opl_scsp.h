@@ -14,6 +14,9 @@ extern int opl_scsp_init(void);
 /* One OPL2 register write. */
 extern void opl_scsp_write(uint8_t reg, uint8_t val);
 
+/* End of a driver tick: carry out its key offs (see opl_scsp.c). */
+extern void opl_scsp_flush(void);
+
 /* Silence all OPL voices. */
 extern void opl_scsp_reset(void);
 

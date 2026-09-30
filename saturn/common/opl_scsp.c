@@ -8,9 +8,15 @@
  *               (+-8 pi, like the OPL's full-level modulator); additive
  *               channels instead send both slots to the output
  *   feedback    the modulator modulates itself, MDL = feedback + 4
- *   envelope    OPL rates 0-15 -> SCSP rates 2 * rate + 3, key scale rate
- *               applied here; sustain level -> DL; non-sustaining
+ *   envelope    OPL rates 0-15 -> SCSP attack 2 * rate + 1, decay and
+ *               release 2 * rate + 2 (matching the YM3812 datasheet times
+ *               to SCSP times measured with saturn/tests/eg.c), key scale
+ *               rate applied here; sustain level -> DL; non-sustaining
  *               operators keep decaying at the release rate (D2R)
+ *   key off/on  key offs wait for the end of the driver tick. A key on in
+ *               the same tick is a re-strike: the OPL then restarts the
+ *               attack from the current level. With a fast attack that is
+ *               a restart; with a slow one the note just goes on.
  *   level       total level and key scale level -> TL
  *   AM / VIB    the slot's LFO (triangle), at the OPL's rates and depths
  * Register values from the SCSP User's Manual; the OPL side follows the
@@ -42,7 +48,8 @@ static const uint8_t s_kslShift[4] = { 8, 1, 2, 0 };
 
 static uint8_t s_regs[256];
 static int32_t s_wave[4] = { -1, -1, -1, -1 };  /* sound RAM offsets of the waveforms */
-static uint8_t s_keyOn[CHANNELS];
+static uint8_t s_keyOn[CHANNELS];       /* key on, as the driver last wrote it */
+static uint8_t s_pendingOff[CHANNELS];  /* keyed off this tick, not yet on the SCSP */
 
 static int op_slot(int channel, int op) { return FIRST_SLOT + channel * 2 + op; }
 static uint8_t op_reg(int base, int channel, int op) { return s_regs[base + s_opOffset[channel] + op * 3]; }
@@ -109,15 +116,23 @@ static uint16_t op_pitch(int channel, int op)
 	return scsp_pitch(octave, (uint16_t)((ratio - 65536) >> 6));
 }
 
-/* SCSP rate for an OPL rate (0-15) with the channel's key scale offset. */
-static uint16_t scsp_rate(uint8_t rate, int rateOffset)
+/* SCSP rate for an OPL rate (0-15) with the channel's key scale offset:
+ * with the OPL's effective rate e = 4 * rate + offset, attack e / 2 + 1,
+ * decay and release e / 2 + 2.25 (both halve their time every 4 e). */
+static uint16_t scsp_rate(uint8_t rate, int rateOffset, int attack)
 {
 	int effective;
 	if (rate == 0) return 0;
 	effective = rate * 4 + rateOffset;      /* 4..63, as in the OPL */
 	if (effective >= 60) return 31;
-	effective = effective / 2 + 3;
+	effective = attack ? (effective + 2) / 2 : (2 * effective + 9) / 4;
 	return (uint16_t)(effective > 31 ? 31 : effective);
+}
+
+/* The OPL attack of the channel's carrier is (near) instant. */
+static int fast_attack(int channel)
+{
+	return (op_reg(0x60, channel, 1) >> 4) >= 12;
 }
 
 static void op_setup(int channel, int op)
@@ -147,7 +162,7 @@ static void op_setup(int channel, int op)
 	if (level > 255) level = 255;
 
 	/* sustaining operators hold at the sustain level, others keep decaying */
-	sustain = (r20 & 0x20) ? 0 : scsp_rate(r80 & 0xF, rateOffset);
+	sustain = (r20 & 0x20) ? 0 : scsp_rate(r80 & 0xF, rateOffset, 0);
 
 	if (r20 & 0xC0) {
 		/* LFO: vibrato 6.15 Hz at 7 or 13.5 cents, tremolo 3.9 Hz at 0.8 or 3 dB */
@@ -170,8 +185,8 @@ static void op_setup(int channel, int op)
 	scsp_slot_write(slot, 0x02, (uint16_t)start);
 	scsp_slot_write(slot, 0x04, 0);
 	scsp_slot_write(slot, 0x06, WAVE_SAMPLES);
-	scsp_slot_write(slot, 0x08, (uint16_t)((sustain << 11) | (scsp_rate(r60 & 0xF, rateOffset) << 6) | scsp_rate(r60 >> 4, rateOffset)));
-	scsp_slot_write(slot, 0x0A, (uint16_t)((0xF << 10) | (((r80 >> 4) == 15 ? 31 : (r80 >> 4)) << 5) | scsp_rate(r80 & 0xF, rateOffset)));
+	scsp_slot_write(slot, 0x08, (uint16_t)((sustain << 11) | (scsp_rate(r60 & 0xF, rateOffset, 0) << 6) | scsp_rate(r60 >> 4, rateOffset, 1)));
+	scsp_slot_write(slot, 0x0A, (uint16_t)((0xF << 10) | (((r80 >> 4) == 15 ? 31 : (r80 >> 4)) << 5) | scsp_rate(r80 & 0xF, rateOffset, 0)));
 	scsp_slot_write(slot, 0x0C, (uint16_t)level);
 	scsp_slot_write(slot, 0x0E, modulation);
 	scsp_slot_write(slot, 0x10, op_pitch(channel, op));
@@ -180,26 +195,45 @@ static void op_setup(int channel, int op)
 	scsp_slot_write(slot, 0x16, (uint16_t)(sounding ? (MIX_LEVEL << 13) : 0));
 }
 
-static void channel_key(int channel, int on)
+static void slots_key(int channel, int on)
 {
-	if (on) {
-		op_setup(channel, 0);
-		op_setup(channel, 1);
-		/* the driver keys off and on in one go: leave the SCSP at least one
-		 * sample (22.7 us) to see the key off, so the note restarts */
-		saturn_delay_us(30);
-	}
 	scsp_key(op_slot(channel, 0), on);
 	scsp_key(op_slot(channel, 1), on);
+}
+
+static void channel_key_on(int channel)
+{
+	op_setup(channel, 0);
+	op_setup(channel, 1);
+
+	if (s_pendingOff[channel]) {
+		/* re-struck within the tick: the note never stopped on the SCSP */
+		s_pendingOff[channel] = 0;
+		if (!fast_attack(channel)) return;
+		slots_key(channel, 0);
+		/* leave the SCSP at least one sample (22.7 us) to see the key off */
+		saturn_delay_us(30);
+	}
+	slots_key(channel, 1);
+}
+
+void opl_scsp_flush(void)
+{
+	int channel;
+	for (channel = 0; channel < CHANNELS; channel++) {
+		if (!s_pendingOff[channel]) continue;
+		s_pendingOff[channel] = 0;
+		slots_key(channel, 0);
+	}
 }
 
 void opl_scsp_reset(void)
 {
 	int channel;
 	for (channel = 0; channel < CHANNELS; channel++) {
-		scsp_key(op_slot(channel, 0), 0);
-		scsp_key(op_slot(channel, 1), 0);
+		slots_key(channel, 0);
 		s_keyOn[channel] = 0;
+		s_pendingOff[channel] = 0;
 	}
 }
 
@@ -247,7 +281,8 @@ void opl_scsp_write(uint8_t reg, uint8_t val)
 		channel = reg - 0xB0;
 		if (on != s_keyOn[channel]) {
 			s_keyOn[channel] = (uint8_t)on;
-			channel_key(channel, on);
+			if (on) channel_key_on(channel);
+			else s_pendingOff[channel] = 1;
 		} else if (on) {
 			scsp_slot_write(op_slot(channel, 0), 0x10, op_pitch(channel, 0));
 			scsp_slot_write(op_slot(channel, 1), 0x10, op_pitch(channel, 1));
