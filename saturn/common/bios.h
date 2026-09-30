@@ -36,4 +36,19 @@ static inline void cpu_interrupts_enable(void)
 	__asm__ volatile ("ldc %0, sr" : : "r" (sr));
 }
 
+/* Mask all interrupts on the calling SH-2; returns the old SR for
+ * cpu_interrupts_restore(). */
+static inline uint32_t cpu_interrupts_disable(void)
+{
+	uint32_t sr;
+	__asm__ volatile ("stc sr, %0" : "=r" (sr));
+	__asm__ volatile ("ldc %0, sr" : : "r" (sr | 0xF0u));
+	return sr;
+}
+
+static inline void cpu_interrupts_restore(uint32_t sr)
+{
+	__asm__ volatile ("ldc %0, sr" : : "r" (sr));
+}
+
 #endif /* SATURN_BIOS_H */

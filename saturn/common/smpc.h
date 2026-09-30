@@ -9,6 +9,9 @@
  * Returns 0 if no pad is connected. Call during V-BLANK. */
 extern uint16_t smpc_pad_read(void);
 
+/* Issue an SMPC command without parameters (SNDOFF, ...) and wait for it. */
+extern void smpc_command(uint8_t command);
+
 /* Non-blocking alternative for use from the VBlank-in interrupt: collects
  * the result of the previous INTBACK, then issues the next one. */
 extern void smpc_vblank(void);

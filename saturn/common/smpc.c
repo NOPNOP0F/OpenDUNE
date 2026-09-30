@@ -3,6 +3,7 @@
  * Uses the INTBACK command with peripheral data only (SMPC User's Manual,
  * section 2.4 and Table 3.10). */
 
+#include "bios.h"
 #include "saturn_hw.h"
 #include "smpc.h"
 
@@ -39,6 +40,20 @@ uint16_t smpc_pad_read(void)
 	intback_issue();
 	while (SMPC_SF & 1) {}
 	return intback_collect();
+}
+
+void smpc_command(uint8_t command)
+{
+	/* keep the VBlank handler from issuing INTBACK in between */
+	uint32_t sr = cpu_interrupts_disable();
+
+	while (SMPC_SF & 1) {}
+	SMPC_SF = 1;
+	SMPC_COMREG = command;
+	while (SMPC_SF & 1) {}
+	s_pending = 0;              /* the output registers no longer hold pad data */
+
+	cpu_interrupts_restore(sr);
 }
 
 void smpc_vblank(void)
