@@ -29,6 +29,14 @@ SECTIONS
 		*(.sdata .sdata.*)
 	} > hwram
 
+	/* C++ static constructors, run by saturn_start() */
+	.init_array : ALIGN(4) {
+		__init_array_start = .;
+		KEEP(*(SORT(.init_array.*)))
+		KEEP(*(.init_array .ctors))
+		__init_array_end = .;
+	} > hwram
+
 	.bss (NOLOAD) : ALIGN(4) {
 		__bss_start = .;
 		*(.bss .bss.*)
