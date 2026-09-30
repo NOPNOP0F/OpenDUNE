@@ -216,6 +216,14 @@ static void PadSaturn_UseSound(void)
 	s_secondNoteFrame = saturn_timer_frames() + 4;
 }
 
+/* Queue a Dune II key code as a press and a release: a key still down in
+ * the engine's map isn't taken again (when keys don't repeat). */
+static void PadSaturn_Key(uint16 key)
+{
+	Input_HandleInput(key);
+	Input_HandleInput(key | 0x800);
+}
+
 static void PadSaturn_KeyTap(uint8 scancode)
 {
 	Input_EventHandler(scancode);
@@ -232,7 +240,7 @@ static void PadSaturn_CommandButton(uint16 index)
 	if (g_selectionType != SELECTIONTYPE_UNIT) return;
 	w = GUI_Widget_Get_ByIndex(g_widgetLinkedListHead, index);
 	if (w == NULL || w->flags.invisible || w->shortcut == 0) return;
-	Input_HandleInput(w->shortcut);
+	PadSaturn_Key(w->shortcut);
 }
 
 /* Press the selected structure's Repair/Upgrade button (widget 4), if shown. */
@@ -242,7 +250,7 @@ static void PadSaturn_RepairUpgrade(void)
 
 	if (w == NULL || w->flags.invisible) return;
 	w->shortcut = KEY_REPAIR_UPGRADE;
-	Input_HandleInput(KEY_REPAIR_UPGRADE);
+	PadSaturn_Key(KEY_REPAIR_UPGRADE);
 }
 
 /* Saturn keyboard key number (PS/2 set 2) to PC XT scan code, or 0. */
@@ -424,7 +432,7 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 
 	/* A: a click, or on a list the key that opens the selected line */
 	if (s_keyA != 0 && saturn_timer_frames() - s_handledFrame <= FOCUS_STALE) {
-		if (pressed & PAD_A) Input_HandleInput(s_keyA);
+		if (pressed & PAD_A) PadSaturn_Key(s_keyA);
 		pad &= ~PAD_A;
 		pressed &= ~PAD_A;
 		released &= ~PAD_A;
@@ -746,7 +754,7 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 	if (line != NULL && line->stringID == 0x30) {
 		if (first) lastMove = 4;
 		if (last) lastMove = 0;
-		Input_HandleInput(lastMove == 0 ? KEY_ARROW_UP : KEY_ARROW_DOWN);
+		PadSaturn_Key(lastMove == 0 ? KEY_ARROW_UP : KEY_ARROW_DOWN);
 		*direction = NO_DIRECTION;
 		s_focus = line;
 		return true;
@@ -754,7 +762,7 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 
 	if (*direction == 0 && !first) {
 		lastMove = 0;
-		Input_HandleInput(KEY_ARROW_UP);
+		PadSaturn_Key(KEY_ARROW_UP);
 		PadSaturn_Blip();
 	} else if (*direction == 4 && last && exitButton != NULL) {
 		s_focus = exitButton;
@@ -765,7 +773,7 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 		return false;
 	} else if (*direction == 4) {
 		lastMove = 4;
-		Input_HandleInput(KEY_ARROW_DOWN);
+		PadSaturn_Key(KEY_ARROW_DOWN);
 		PadSaturn_Blip();
 	}
 	*direction = NO_DIRECTION;
