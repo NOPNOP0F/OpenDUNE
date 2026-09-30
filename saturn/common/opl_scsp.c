@@ -4,9 +4,11 @@
  * playing one of the four OPL waveforms from a 1024-sample 16-bit table
  * (the SCSP's FM depth, MDL, is defined for 1024-sample waves):
  *   frequency   fnum * 49716 / 2^(20 - block) * multiple, as OCT/FNS;
- *               channels sounding above 15 kHz are shifted down to 15 kHz
- *               (at the OPL's 49.7 kHz a 20 kHz tone is fine; at the SCSP's
- *               44.1 kHz its FM would fold back into piercing tones)
+ *               channels sounding above 15 kHz drop by octaves to 10 kHz or
+ *               below, 9 dB quieter (at the OPL's 49.7 kHz the credits'
+ *               20 kHz tone is barely heard, its audible sidebands 9 dB down;
+ *               at the SCSP's 44.1 kHz its FM would fold back into piercing
+ *               tones)
  *   FM          carrier modulated by the modulator's output, MDL 0xC
  *               (+-8 pi, like the OPL's full-level modulator); additive
  *               channels instead send both slots to the output
@@ -41,7 +43,9 @@ enum {
 	FIRST_SLOT = 1,             /* slot 0 plays speech */
 	WAVE_SAMPLES = 1024,
 	MIX_LEVEL = 5,              /* DISDL of sounding operators: -12 dB */
-	X_MAX = 632739              /* 15 kHz in op_x() units */
+	X_MAX = 632739,             /* 15 kHz in op_x() units */
+	X_SHIFTED = 421826,         /* 10 kHz: where tones above X_MAX drop to */
+	SHIFTED_ATT = 24            /* and how much quieter they get: 9 dB in TL units */
 };
 
 /* operator register offset of each channel's modulator; carrier is +3 */
@@ -140,19 +144,28 @@ static uint32_t op_x(int channel, int op)
 	return (fnum * s_multiple2[op_reg(0x20, channel, op) & 0xF]) << ((bx >> 2) & 7);
 }
 
+/* The highest tone a channel sounds, in op_x() units. */
+static uint32_t channel_top(int channel)
+{
+	uint32_t top = op_x(channel, 1);
+	if ((s_regs[0xC0 + channel] & 1) && op_x(channel, 0) > top) top = op_x(channel, 0);
+	return top;
+}
+
 /* OCT/FNS for an operator: a 1024-sample wave at the operator frequency.
  * A channel whose sounding tone is above 15 kHz (the credits counting down
- * is at 20 kHz, which aliases on the SCSP) plays with its tone at 15 kHz,
- * both operators shifted alike to keep the timbre. */
+ * is at 20 kHz, which aliases on the SCSP) drops by octaves to 10 kHz or
+ * below, both operators alike to keep the timbre. */
 static uint16_t op_pitch(int channel, int op)
 {
 	uint32_t x = op_x(channel, op);
-	uint32_t top = op_x(channel, 1);
+	uint32_t top = channel_top(channel);
 	uint64_t ratio;
 	int octave = 0;
 
-	if ((s_regs[0xC0 + channel] & 1) && op_x(channel, 0) > top) top = op_x(channel, 0);
-	if (top > X_MAX) x = (uint32_t)((uint64_t)x * X_MAX / top);
+	if (top > X_MAX) {
+		while (top > X_SHIFTED) { top >>= 1; x >>= 1; }
+	}
 
 	/* rate / 44100 in 16.16: x * 49716 * 1024 / 2^20 / 44100 / 2 = x * 36.0751 */
 	ratio = ((uint64_t)x * 2364218) >> 16;
@@ -257,7 +270,7 @@ static void op_setup(int channel, int op)
 	 * fade on sounding operators */
 	if (ksl < 0) ksl = 0;
 	level = (r40 & 0x3F) * 2 + ((uint32_t)ksl >> s_kslShift[r40 >> 6]) / 2;
-	if (op_sounding(channel, op)) level += s_channelAtt[channel];
+	if (op_sounding(channel, op)) level += s_channelAtt[channel] + (channel_top(channel) > X_MAX ? SHIFTED_ATT : 0);
 	if (level > 255) level = 255;
 
 	/* sustaining operators hold at the sustain level, others keep decaying */
