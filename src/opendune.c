@@ -76,6 +76,7 @@
 #endif
 #if defined(SATURN)
 #include "backup.h"
+#include "console.h"
 #include "input/pad_saturn.h"
 #endif
 
@@ -1318,6 +1319,11 @@ int main(int argc, char **argv)
 	if(g_outlog != NULL) setvbuf(g_outlog, NULL, _IOLBF, 0);
 #endif
 #endif /* DOS */
+#if defined(SATURN)
+	/* messages only go to the log (saturn/tools/ymir-dump.py): the screen is
+	 * the game's; errors and crashes still bring the console up */
+	console_release();
+#endif
 	CrashLog_Init();
 
 	VARIABLE_NOT_USED(argc);
