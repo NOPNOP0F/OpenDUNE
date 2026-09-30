@@ -3,8 +3,9 @@
  * The AdLibDriver class below is AdPlug's src/adl.cpp (revision 3fbb25114db3),
  * which is ScummVM's Kyra AdLib driver, up to "End of current scummvm code".
  * Changes for OpenDUNE: OPL register writes go to a function given to the
- * constructor instead of an AdPlug Copl; <string.h> instead of <cstring>; the
- * C interface at the end (see adl_driver.h) replaces AdPlug's CadlPlayer.
+ * constructor instead of an AdPlug Copl; <string.h> instead of <cstring>;
+ * stopChannels(); the C interface at the end (see adl_driver.h) replaces
+ * AdPlug's CadlPlayer.
  */
 
 /*
@@ -69,7 +70,6 @@
 #include <stdarg.h>
 #include <assert.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 #include "adl_driver.h"
 
@@ -162,6 +162,7 @@ public:
 	void startSound(int track, int volume) override;
 	bool isChannelPlaying(int channel) const override;
 	void stopAllChannels() override;
+	void stopChannels(int first, int last);	// added in OpenDUNE
 	int getSoundTrigger() const override { return _soundTrigger; }
 	void resetSoundTrigger() override { _soundTrigger = 0; }
 
@@ -654,6 +655,21 @@ void AdLibDriver::stopAllChannels() {
 	_programQueueStart = _programQueueEnd = 0;
 	_programQueue[0] = QueueEntry();
 	_programStartTimeout = 0;
+}
+
+// Added in OpenDUNE: stop channels first..last only (the music, leaving
+// sound effects playing).
+void AdLibDriver::stopChannels(int first, int last) {
+	for (int channel = first; channel <= last; ++channel) {
+		_curChannel = channel;
+
+		Channel &chan = _channels[_curChannel];
+		chan.priority = 0;
+		chan.dataptr = 0;
+
+		if (channel != 9)
+			noteOff(chan);
+	}
 }
 
 // timer callback
@@ -2539,8 +2555,7 @@ static void ADL_NoOpl(uint8 reg, uint8 val) {
 }
 
 static AdLibDriver s_driver(ADL_NoOpl);
-static uint8 s_trackEntries[120];	// track -> program (0xFF: none)
-static uint8 *s_soundData = nullptr;
+static const uint8 *s_trackEntries = nullptr;	// track -> program (0xFF: none)
 static int s_trackCount = 0;
 
 extern "C" void ADL_Init(AdlOplWrite write) {
@@ -2552,21 +2567,16 @@ extern "C" void ADL_Init(AdlOplWrite write) {
 extern "C" int ADL_Load(const uint8 *file, uint32 size) {
 	// Dune II uses version 3: 120 track entries, then the sound data
 	// (250 program offsets, 250 instrument offsets, programs...).
-	if (size < 120 + 1000)
-		return 0;
-
 	s_driver.stopAllChannels();
 	s_driver.setSoundData(nullptr, 0);
-	free(s_soundData);
-	s_soundData = (uint8 *)malloc(size - 120);
-	if (s_soundData == nullptr)
+	s_trackEntries = nullptr;
+	s_trackCount = 0;
+	if (file == nullptr || size < 120 + 1000)
 		return 0;
 
-	memcpy(s_trackEntries, file, 120);
-	memcpy(s_soundData, file + 120, size - 120);
-	s_driver.setSoundData(s_soundData, size - 120);
-
-	s_trackCount = 0;
+	// the driver only reads its sound data
+	s_driver.setSoundData(const_cast<uint8 *>(file) + 120, size - 120);
+	s_trackEntries = file;
 	for (int i = 120; i > 0; i--) {
 		if (s_trackEntries[i - 1] < 250) {
 			s_trackCount = i;
@@ -2577,7 +2587,7 @@ extern "C" int ADL_Load(const uint8 *file, uint32 size) {
 }
 
 extern "C" void ADL_Play(int track, int volume) {
-	if (s_soundData == nullptr || track < 0 || track >= s_trackCount)
+	if (s_trackEntries == nullptr || track < 0 || track >= s_trackCount)
 		return;
 	if (s_trackEntries[track] == 0xFF)
 		return;
@@ -2594,4 +2604,10 @@ extern "C" int ADL_IsChannelPlaying(int channel) {
 
 extern "C" void ADL_StopAll(void) {
 	s_driver.stopAllChannels();
+}
+
+extern "C" void ADL_StopMusic(void) {
+	// music plays on channels 0-5, driven from channel 9
+	s_driver.stopChannels(0, 5);
+	s_driver.stopChannels(9, 9);
 }
