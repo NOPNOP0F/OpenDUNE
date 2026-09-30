@@ -60,6 +60,7 @@
 #include "../pool/pool.h"
 #include "../pool/structure.h"
 #include "../pool/unit.h"
+#include "../scenario.h"
 #include "../structure.h"
 #include "../tile.h"
 #include "../timer.h"
@@ -906,10 +907,55 @@ static void PadSaturn_ReticleOnFocus(void)
 	PadSaturn_SetReticle(x, y, w->width, w->height);
 }
 
-/* Scroll the camera from the D-pad or the stick, the cursor in the middle. */
+/* Where the camera's cursor is, in tiles from the middle of the map view:
+ * it only leaves the middle to reach the edges of the map, where the view
+ * can't scroll further. */
+static int s_cameraTileX = 0, s_cameraTileY = 0;
+
+/* Scroll the view by dx, dy tiles within the map (as Map_MoveDirection()
+ * does, but from where the view is now); returns the tiles moved. */
+static void PadSaturn_ScrollView(int dx, int dy, int *movedX, int *movedY)
+{
+	const MapInfo *mapInfo = &g_mapInfos[g_scenario.mapScale];
+	int x = Tile_GetPackedX(g_viewportPosition), y = Tile_GetPackedY(g_viewportPosition);
+	int nx = x + dx, ny = y + dy;
+
+	if (nx < mapInfo->minX) nx = mapInfo->minX;
+	if (ny < mapInfo->minY) ny = mapInfo->minY;
+	if (nx > mapInfo->minX + mapInfo->sizeX - 15) nx = mapInfo->minX + mapInfo->sizeX - 15;
+	if (ny > mapInfo->minY + mapInfo->sizeY - 10) ny = mapInfo->minY + mapInfo->sizeY - 10;
+	g_viewportPosition = Tile_PackXY((uint16)nx, (uint16)ny);
+	*movedX = nx - x;
+	*movedY = ny - y;
+}
+
+/* One step of the camera: the cursor back to the middle first, then the
+ * view, then (at the map's edge) the cursor towards the edge. */
+static void PadSaturn_CameraStep(int dx, int dy)
+{
+	int scrollX = 0, scrollY = 0, movedX, movedY;
+
+	if (dx != 0 && s_cameraTileX != 0 && (s_cameraTileX > 0) != (dx > 0)) s_cameraTileX += dx;
+	else scrollX = dx;
+	if (dy != 0 && s_cameraTileY != 0 && (s_cameraTileY > 0) != (dy > 0)) s_cameraTileY += dy;
+	else scrollY = dy;
+
+	PadSaturn_ScrollView(scrollX, scrollY, &movedX, &movedY);
+	if (scrollX != 0 && movedX == 0) s_cameraTileX += scrollX;
+	if (scrollY != 0 && movedY == 0) s_cameraTileY += scrollY;
+
+	/* the view shows 15 x 10 tiles, the middle one being 7, 5 */
+	if (s_cameraTileX < -7) s_cameraTileX = -7;
+	if (s_cameraTileX > 7) s_cameraTileX = 7;
+	if (s_cameraTileY < -5) s_cameraTileY = -5;
+	if (s_cameraTileY > 4) s_cameraTileY = 4;
+}
+
+/* Scroll the camera from the D-pad or the stick. */
 static void PadSaturn_Camera(void)
 {
-	static const uint16 stickDirections[3][3] = { { 7, 0, 1 }, { 6, NO_DIRECTION, 2 }, { 5, 4, 3 } };
+	static const int directionX[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
+	static const int directionY[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
 	uint32 sr;
 	uint16 direction;
 	int sx, sy, x, y;
@@ -921,21 +967,23 @@ static void PadSaturn_Camera(void)
 	sy = s_stickY;
 	cpu_interrupts_restore(sr);
 
-	if (direction != NO_DIRECTION) Map_MoveDirection(direction);
+	if (direction != NO_DIRECTION) PadSaturn_CameraStep(directionX[direction], directionY[direction]);
 
 	/* the stick: a tile each time enough travel has been summed up */
 	x = (sx >= STICK_STEP) ? 1 : (sx <= -STICK_STEP) ? -1 : 0;
 	y = (sy >= STICK_STEP) ? 1 : (sy <= -STICK_STEP) ? -1 : 0;
 	if (x != 0 || y != 0) {
-		Map_MoveDirection(stickDirections[y + 1][x + 1]);
+		PadSaturn_CameraStep(x, y);
 		sr = cpu_interrupts_disable();
 		s_stickX -= x * STICK_STEP;
 		s_stickY -= y * STICK_STEP;
 		cpu_interrupts_restore(sr);
 	}
 
-	if (s_x != CAMERA_X || s_y != CAMERA_Y) PadSaturn_SetPosition(CAMERA_X, CAMERA_Y);
-	PadSaturn_SetReticle(CAMERA_X - 8, CAMERA_Y - 8, 16, 16);
+	x = CAMERA_X + s_cameraTileX * 16;
+	y = CAMERA_Y + s_cameraTileY * 16;
+	if (s_x != x || s_y != y) PadSaturn_SetPosition((uint16)x, (uint16)y);
+	PadSaturn_SetReticle(x - 8, y - 8, 16, 16);
 }
 
 /* A new screen: forget what was pressed for the one before. */
@@ -1018,7 +1066,10 @@ void PadSaturn_HandleEvents(Widget *list)
 	camera = mission && (targeting || (s_controller == CONTROLLER_3D ? s_stickLast : s_camera));
 
 	if (camera) {
-		if (!s_cameraActive) PadSaturn_ReleaseA();
+		if (!s_cameraActive) {
+			PadSaturn_ReleaseA();
+			s_cameraTileX = s_cameraTileY = 0;
+		}
 		s_cameraActive = true;
 		s_focusActive = false;
 		s_keyA = 0;
