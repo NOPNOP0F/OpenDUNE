@@ -1173,6 +1173,20 @@ bool GUI_Widget_HOF_Resume_Click(Widget *w)
  */
 bool GUI_Production_List_Click(Widget *w)
 {
+#if defined(SATURN)
+	/* using the selected item again builds it, as "Build This" does: no
+	 * trip to that button with a pad (not at the Starport, where the button
+	 * sends the whole order) */
+	if (!g_factoryWindowStarport && w->index - 46 == g_factoryWindowSelected) {
+		Widget *build;
+
+		for (build = g_widgetInvoiceTail; build != NULL; build = GUI_Widget_GetNext(build)) {
+			if (build->flags.invisible || build->clickProc != &GUI_Production_BuildThis_Click) continue;
+			return GUI_Production_BuildThis_Click(build);
+		}
+	}
+#endif
+
 	GUI_FactoryWindow_B495_0F30();
 
 	g_factoryWindowSelected = w->index - 46;
