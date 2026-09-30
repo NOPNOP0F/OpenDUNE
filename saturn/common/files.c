@@ -1,8 +1,10 @@
 /** @file saturn/common/files.c Files for newlib: the CD and a RAM store.
  *
  * CD files are read in whole sectors through GFS into a small cache and
- * copied out from there, so any byte range can be read. The RAM store holds
- * personal files (configuration, saves) for as long as the console is on. */
+ * copied out from there, so any byte range can be read. Personal files
+ * (configuration, saves) are kept in backup memory (backup.h) and worked on
+ * in RAM: read in when opened, written back when a changed file is closed,
+ * and dropped from RAM once stored and closed. */
 
 #include <errno.h>
 #include <stdbool.h>
@@ -15,6 +17,7 @@
 
 #include "sega_gfs.h"
 
+#include "backup.h"
 #include "files.h"
 
 #undef errno
@@ -36,6 +39,9 @@ typedef struct RamFile {
 	uint8_t *data;
 	uint32_t size;
 	uint32_t capacity;
+	int opens;          /* file descriptors on it */
+	bool changed;       /* since it was read from backup memory */
+	bool stored;        /* in backup memory as it is */
 } RamFile;
 
 typedef enum { FD_FREE, FD_CD, FD_RAM } FdKind;
@@ -151,6 +157,61 @@ static RamFile *ram_create(const char *path)
 	return NULL;
 }
 
+static void ram_free(RamFile *r)
+{
+	free(r->data);
+	memset(r, 0, sizeof(*r));
+}
+
+/* Name in backup memory: "D2_" and up to 8 letters and digits of the file
+ * name, before the extension ("_save000.dat" -> "D2_SAVE000"). */
+static void backup_name(const char *path, char name[BACKUP_NAME_LENGTH + 1])
+{
+	const char *src = base_name(path);
+	int length = 3;
+
+	memcpy(name, "D2_", 3);
+	for (; *src != '\0' && *src != '.' && length < 3 + 8; src++) {
+		char c = *src;
+		if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+		if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) name[length++] = c;
+	}
+	name[length] = '\0';
+}
+
+/* Read a personal file in from backup memory, if it is there. */
+static RamFile *ram_load(const char *path)
+{
+	char name[BACKUP_NAME_LENGTH + 1];
+	uint8_t *data;
+	uint32_t size;
+	RamFile *r;
+
+	backup_name(path, name);
+	if (!backup_read(name, &data, &size)) return NULL;
+	r = ram_create(path);
+	if (r == NULL) {
+		free(data);
+		return NULL;
+	}
+	r->data = data;
+	r->size = r->capacity = size;
+	r->stored = true;
+	return r;
+}
+
+/* Write a changed personal file to backup memory. */
+static bool ram_store(RamFile *r)
+{
+	char name[BACKUP_NAME_LENGTH + 1];
+
+	backup_name(r->name, name);
+	if (!backup_write(name, "Dune II", r->data, r->size)) return false;
+	r->changed = false;
+	r->stored = true;
+	return true;
+}
+
 static Fd *fd_get(int fd)
 {
 	if (fd < FD_FIRST || fd >= FD_FIRST + FD_COUNT) return NULL;
@@ -222,6 +283,7 @@ int _open(const char *path, int flags, int mode)
 	}
 
 	f->ram = ram_find(path);
+	if (f->ram == NULL && (flags & O_TRUNC) == 0) f->ram = ram_load(path);
 	if (f->ram == NULL) {
 		if ((flags & O_CREAT) == 0) {
 			errno = ENOENT;
@@ -232,8 +294,13 @@ int _open(const char *path, int flags, int mode)
 			errno = ENOSPC;
 			return -1;
 		}
+		f->ram->changed = true;     /* even if nothing is written: it exists */
 	}
-	if (flags & O_TRUNC) f->ram->size = 0;
+	if (flags & O_TRUNC) {
+		f->ram->size = 0;
+		f->ram->changed = true;
+	}
+	f->ram->opens++;
 	f->kind = FD_RAM;
 	return fd;
 }
@@ -245,7 +312,24 @@ int _close(int fd)
 		errno = EBADF;
 		return -1;
 	}
-	if (f->kind == FD_CD) GFS_Close(f->gfs);
+	if (f->kind == FD_CD) {
+		GFS_Close(f->gfs);
+	} else {
+		RamFile *r = f->ram;
+		bool ok = !r->changed || ram_store(r);
+
+		f->kind = FD_FREE;
+		r->opens--;
+		if (r->opens == 0 && (r->stored || !ok)) {
+			/* stored: backup memory has it; not stored: it didn't fit, and
+			 * shouldn't look saved */
+			ram_free(r);
+		}
+		if (!ok) {
+			errno = ENOSPC;
+			return -1;
+		}
+	}
 	f->kind = FD_FREE;
 	return 0;
 }
@@ -333,6 +417,7 @@ int files_write(int fd, const void *buffer, size_t length)
 	}
 	if (f->position > r->size) memset(r->data + r->size, 0, f->position - r->size);
 	memcpy(r->data + f->position, buffer, length);
+	r->changed = true;
 	f->position += (uint32_t)length;
 	if (f->position > r->size) r->size = f->position;
 	return (int)length;
@@ -399,12 +484,19 @@ int _stat(const char *path, struct stat *st)
 		return 0;
 	} else {
 		RamFile *r = ram_find(path);
+		bool loaded = false;
+
+		if (r == NULL) {
+			r = ram_load(path);
+			loaded = true;
+		}
 		if (r == NULL) {
 			errno = ENOENT;
 			return -1;
 		}
 		st->st_mode = S_IFREG;
 		st->st_size = (off_t)r->size;
+		if (loaded) ram_free(r);
 		return 0;
 	}
 }
@@ -412,16 +504,14 @@ int _stat(const char *path, struct stat *st)
 int _unlink(const char *path)
 {
 	RamFile *r;
+	char name[BACKUP_NAME_LENGTH + 1];
 	if (is_cd_path(path)) {
 		errno = EROFS;
 		return -1;
 	}
 	r = ram_find(path);
-	if (r == NULL) {
-		errno = ENOENT;
-		return -1;
-	}
-	free(r->data);
-	memset(r, 0, sizeof(*r));
+	if (r != NULL) ram_free(r);
+	backup_name(path, name);
+	backup_delete(name);
 	return 0;
 }
