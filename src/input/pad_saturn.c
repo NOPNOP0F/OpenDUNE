@@ -151,6 +151,7 @@ static volatile bool s_toggleCamera = false;
 static volatile bool s_stickLast = false;           /* 3D Controller: stick used last */
 static volatile bool s_pressA = false;              /* A pressed (for PadSaturn_PickRegion()) */
 static volatile uint16 s_keyA = 0;                  /* a key A sends instead of a click, or 0 */
+static volatile bool s_blockA = false;              /* ignore A until it is released */
 static enum { CYCLE_NONE, CYCLE_UNIT, CYCLE_STRUCTURE } s_cycle = CYCLE_NONE;
 
 /* what PadSaturn_HandleEvents() found */
@@ -349,6 +350,12 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 		pad &= PAD_DIRECTIONS;
 		if (s_keySpace) pad |= PAD_A;
 		if (s_keyTab) pad |= PAD_C;
+	}
+	/* a new screen ignores the A that was down when it came (the press
+	 * that skipped the one before) until A is released */
+	if (s_blockA) {
+		if (pad & PAD_A) pad &= ~PAD_A;
+		else s_blockA = false;
 	}
 	pressed = pad & ~s_previous;
 	released = s_previous & ~pad;
@@ -760,6 +767,14 @@ static void PadSaturn_Camera(void)
 	PadSaturn_SetReticle(CAMERA_X - 8, CAMERA_Y - 8, 16, 16);
 }
 
+/* A new screen: forget what was pressed for the one before. */
+static void PadSaturn_NewScreen(void)
+{
+	Input_History_Clear();
+	s_blockA = true;
+	s_pressA = false;
+}
+
 /* Pause, with a message, until a controller is connected. */
 static void PadSaturn_WaitForController(void)
 {
@@ -780,11 +795,14 @@ static void PadSaturn_WaitForController(void)
 void PadSaturn_HandleEvents(Widget *list)
 {
 	static Widget *lastList = NULL;
-	bool mission, targeting, camera;
+	bool mission, targeting, camera, fresh;
 	uint16 direction;
 	uint32 sr;
 
 	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
+	/* after a while without widgets, even the same list is a new screen
+	 * (windows reuse theirs) */
+	fresh = saturn_timer_frames() - s_handledFrame > FOCUS_STALE;
 	s_handledFrame = saturn_timer_frames();
 	s_keyA = 0;
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE) {
@@ -824,7 +842,8 @@ void PadSaturn_HandleEvents(Widget *list)
 	PadSaturn_StickScroll(list);
 
 	/* a new screen, or the focused widget gone: the nearest one */
-	if (list != lastList || !PadSaturn_InList(list, s_focus)) {
+	if (list != lastList || fresh || !PadSaturn_InList(list, s_focus)) {
+		if (list != lastList || fresh) PadSaturn_NewScreen();
 		s_focus = PadSaturn_MoveFocus(list, NO_DIRECTION);
 		lastList = list;
 	}
@@ -871,6 +890,7 @@ void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeig
 
 	/* the line the cursor is on, or the menu's own choice when it's elsewhere */
 	if (top != lastTop || s_x < left || s_x > right || s_y < top || s_y >= top + lines * lineHeight) {
+		if (top != lastTop) PadSaturn_NewScreen();
 		line = current;
 		lastTop = top;
 	} else {
@@ -896,7 +916,10 @@ int PadSaturn_PickRegion(const int16 *x, const int16 *y, const bool *usable, int
 	int i;
 
 	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
-	if (saturn_timer_frames() - s_handledFrame > FOCUS_STALE) focus = -1;   /* a new map */
+	if (saturn_timer_frames() - s_handledFrame > FOCUS_STALE) {
+		focus = -1;     /* a new map */
+		PadSaturn_NewScreen();
+	}
 	s_handledFrame = saturn_timer_frames();
 	s_keyA = 0;
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE) return -1;
