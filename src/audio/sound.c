@@ -10,6 +10,7 @@
 #include "sound.h"
 
 #include "driver.h"
+#include "dsp.h"
 #include "mt32mpu.h"
 #include "../config.h"
 #include "../file.h"
@@ -178,7 +179,11 @@ void Voice_Play(int16 voiceID)
 static void Voice_UnloadVoice(uint16 voice)
 {
 	if (g_voiceData[voice] != NULL) {
+#if defined(SATURN)
+		DSP_Saturn_FreeVoc(g_voiceData[voice]);
+#else
 		free(g_voiceData[voice]);
+#endif
 		g_voiceData[voice] = NULL;
 	}
 }
@@ -450,6 +455,11 @@ static void *Sound_LoadVoc(const char *filename, uint32 *retFileSize)
 	*retFileSize = fileSize;
 	res = malloc(fileSize);
 	Driver_Voice_LoadFile(filename, res, fileSize);
+
+#if defined(SATURN)
+	/* preloaded voices live in sound RAM, not in main RAM */
+	res = DSP_Saturn_KeepVoc(res, retFileSize);
+#endif
 
 	return res;
 }

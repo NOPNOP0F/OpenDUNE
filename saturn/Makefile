@@ -115,7 +115,7 @@ $(BUILD)/common/files.o: common/files.c $(COMMON_HDRS) $(BUILD)/sbl/.copied Make
 # --- opendune: the engine ---------------------------------------------------
 
 ENGINE_SRCS := \
-	animation.c audio/driver.c audio/dsp_none.c audio/midi_none.c audio/mt32mpu.c \
+	animation.c audio/driver.c audio/dsp_saturn.c audio/midi_none.c audio/mt32mpu.c \
 	audio/sound.c codec/format40.c codec/format80.c config.c crashlog/crashlog.c \
 	crashlog/crashlog_none.c cutscene.c explosion.c file.c gfx.c gui/editbox.c \
 	gui/font.c gui/gui.c gui/mentat.c gui/security.c gui/viewport.c gui/widget.c \

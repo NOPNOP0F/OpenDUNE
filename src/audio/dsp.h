@@ -9,4 +9,11 @@ extern uint8 DSP_GetStatus(void);
 extern bool DSP_Init(void);
 extern void DSP_Uninit(void);
 
+#if defined(SATURN)
+/* Move a preloaded VOC (malloc'd, freed here) into sound RAM; returns what
+ * to keep instead, and its size, or NULL if it has to be loaded when needed. */
+extern void *DSP_Saturn_KeepVoc(void *voc, uint32 *size);
+extern void DSP_Saturn_FreeVoc(void *data);
+#endif
+
 #endif /* DSP_H */
