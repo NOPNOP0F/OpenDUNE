@@ -685,6 +685,22 @@ static Widget *PadSaturn_MoveFocus(Widget *list, uint16 direction)
 	return best;
 }
 
+/* A number for the buttons of a list, where and how big they are: another
+ * number, another screen. */
+static uint32 PadSaturn_Layout(Widget *list)
+{
+	uint32 layout = 0;
+	Widget *w;
+
+	for (w = list; w != NULL; w = GUI_Widget_GetNext(w)) {
+		int x, y;
+		if (!PadSaturn_Focusable(w)) continue;
+		PadSaturn_WidgetPosition(w, &x, &y);
+		layout = layout * 31 + (uint32)(w->index * 1009 + x * 97 + y * 13 + w->width * 7 + w->height);
+	}
+	return layout;
+}
+
 /* Whether w is a widget of list the focus can go to. */
 static bool PadSaturn_InList(Widget *list, Widget *w)
 {
@@ -811,14 +827,13 @@ static void PadSaturn_WaitForController(void)
 void PadSaturn_HandleEvents(Widget *list)
 {
 	static Widget *lastList = NULL;
+	static uint32 lastLayout = 0;
 	bool mission, targeting, camera, fresh;
+	uint32 layout;
 	uint16 direction;
 	uint32 sr;
 
 	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
-	/* after a while without widgets, even the same list is a new screen
-	 * (windows reuse theirs) */
-	fresh = saturn_timer_frames() - s_handledFrame > FOCUS_STALE;
 	s_handledFrame = saturn_timer_frames();
 	s_keyA = 0;
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE) {
@@ -830,6 +845,12 @@ void PadSaturn_HandleEvents(Widget *list)
 	targeting = g_selectionType == SELECTIONTYPE_TARGET || g_selectionType == SELECTIONTYPE_PLACE;
 	mission = list != NULL && list == g_widgetLinkedListHead &&
 		(targeting || g_selectionType == SELECTIONTYPE_UNIT || g_selectionType == SELECTIONTYPE_STRUCTURE);
+
+	/* a new screen: another list, or other buttons in the same one (windows
+	 * reuse theirs); not the mission's, whose side bar changes as you go */
+	layout = PadSaturn_Layout(list);
+	fresh = list != lastList || (list != g_widgetLinkedListHead && layout != lastLayout);
+	lastLayout = layout;
 
 	sr = cpu_interrupts_disable();
 	if (s_toggleCamera && mission && s_controller != CONTROLLER_3D) s_camera = !s_camera;
@@ -854,13 +875,13 @@ void PadSaturn_HandleEvents(Widget *list)
 	if (s_cameraActive) {
 		/* back from the camera: focus the nearest button */
 		s_cameraActive = false;
-		lastList = NULL;
+		s_focus = NULL;
 	}
 	PadSaturn_StickScroll(list);
 
 	/* a new screen, or the focused widget gone: the nearest one */
-	if (list != lastList || fresh || !PadSaturn_InList(list, s_focus)) {
-		if (list != lastList || fresh) PadSaturn_NewScreen();
+	if (fresh || !PadSaturn_InList(list, s_focus)) {
+		if (fresh) PadSaturn_NewScreen();
 		s_focus = PadSaturn_MoveFocus(list, NO_DIRECTION);
 		lastList = list;
 	}
