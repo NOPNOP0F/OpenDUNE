@@ -78,6 +78,7 @@ static uint8_t s_keyOn[CHANNELS];       /* key on, as the driver last wrote it *
 static uint8_t s_pendingOff[CHANNELS];  /* keyed off this tick, not yet carried out */
 static Operator s_ops[CHANNELS][2];
 static uint64_t s_envTime;              /* us of the last software envelope step */
+static uint8_t s_channelAtt[CHANNELS];  /* extra attenuation (TL units), for fades */
 static int s_attackOffset = 1;          /* SCSP attack = OPL effective rate / 2 + this */
 static int s_decayQuarters = 9;         /* SCSP decay = OPL effective rate / 2 + this / 4 */
 
@@ -207,6 +208,12 @@ static uint8_t op_tl(const Operator *o)
 	return (uint8_t)(tl > 255 ? 255 : tl);
 }
 
+/* Only a sounding operator's level is heard; a modulator's sets the timbre. */
+static int op_sounding(int channel, int op)
+{
+	return op == 1 || (s_regs[0xC0 + channel] & 1);
+}
+
 static void op_setup(int channel, int op)
 {
 	int slot = op_slot(channel, op);
@@ -218,8 +225,8 @@ static void op_setup(int channel, int op)
 	uint8_t bx = s_regs[0xB0 + channel];
 	uint32_t fnum = ((uint32_t)(bx & 3) << 8) | s_regs[0xA0 + channel];
 	int block = (bx >> 2) & 7;
+	int sounding = op_sounding(channel, op);
 	int additive = c0 & 1;
-	int sounding = additive || op == 1;
 	int wave = (s_regs[0x01] & 0x20) ? (op_reg(0xE0, channel, op) & 3) : 0;
 	int32_t start = s_wave[wave];
 	int keyScale = block * 2 + ((s_regs[0x08] & 0x40) ? (fnum >> 8) & 1 : (fnum >> 9) & 1);
@@ -229,9 +236,11 @@ static void op_setup(int channel, int op)
 	uint32_t level;
 	uint16_t sustain, lfo = 0, modulation = 0, eg1, eg2;
 
-	/* level: total level in 0.75 dB, key scale level in 0.1875 dB */
+	/* level: total level in 0.75 dB, key scale level in 0.1875 dB, and a
+	 * fade on sounding operators */
 	if (ksl < 0) ksl = 0;
 	level = (r40 & 0x3F) * 2 + ((uint32_t)ksl >> s_kslShift[r40 >> 6]) / 2;
+	if (op_sounding(channel, op)) level += s_channelAtt[channel];
 	if (level > 255) level = 255;
 
 	/* sustaining operators hold at the sustain level, others keep decaying */
@@ -399,6 +408,17 @@ void opl_scsp_update(void)
 				scsp_slot_write(op_slot(channel, op), 0x0C, tl);
 			}
 		}
+	}
+}
+
+void opl_scsp_set_attenuation(int first, int last, uint8_t attenuation)
+{
+	int channel;
+	for (channel = first; channel <= last && channel < CHANNELS; channel++) {
+		if (s_channelAtt[channel] == attenuation) continue;
+		s_channelAtt[channel] = attenuation;
+		if (s_ops[channel][1].slotOn) op_setup(channel, 1);
+		if (s_ops[channel][0].slotOn && op_sounding(channel, 0)) op_setup(channel, 0);
 	}
 }
 

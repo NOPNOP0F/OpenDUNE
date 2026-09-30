@@ -20,10 +20,6 @@ BUILD     := build
 # Dune II v1.07 data files; only the PAK archives go on the disc
 DATA      ?= ../bin/data
 
-# General MIDI SoundFont the music instruments are taken from (INSTR.BNK);
-# without it the disc has no music
-SOUNDFONT ?= /usr/share/soundfonts/FluidR3_GM.sf2
-
 CFLAGS    := -m2 -O2 -std=gnu11 -Wall -Wextra -Icommon
 # C++ only for the AdLib driver: no exceptions, RTTI or C++ library
 CXXFLAGS  := -m2 -O2 -std=gnu++11 -Wall -fno-exceptions -fno-rtti -fno-use-cxa-atexit -fno-threadsafe-statics
@@ -128,7 +124,7 @@ $(BUILD)/cxx/adl_driver.o: $(SRC)/audio/adl_driver.cpp $(SRC)/audio/adl_driver.h
 # --- opendune: the engine ---------------------------------------------------
 
 ENGINE_SRCS := \
-	animation.c audio/driver.c audio/dsp_saturn.c audio/midi_saturn.c audio/mt32mpu.c \
+	animation.c audio/driver.c audio/dsp_saturn.c audio/mpu_adlib_saturn.c \
 	audio/sound.c codec/format40.c codec/format80.c config.c crashlog/crashlog.c \
 	crashlog/crashlog_none.c cutscene.c explosion.c file.c gfx.c gui/editbox.c \
 	gui/font.c gui/gui.c gui/mentat.c gui/security.c gui/viewport.c gui/widget.c \
@@ -146,7 +142,7 @@ ENGINE_SRCS := \
 	table/widget.c table/widgetinfo.c table/windowdesc.c team.c tile.c timer.c \
 	tools.c unit.c video/video_fps.c video/video_saturn.c wsa.c
 
-ENGINE_OBJS := $(ENGINE_SRCS:%.c=$(BUILD)/engine/%.o) $(BUILD)/engine/rev.o
+ENGINE_OBJS := $(ENGINE_SRCS:%.c=$(BUILD)/engine/%.o) $(BUILD)/engine/rev.o $(BUILD)/cxx/adl_driver.o
 ENGINE_CFLAGS := $(CFLAGS) -DSATURN -DDUNE_DATA_DIR='"CD"' -I../include
 
 $(BUILD)/engine/%.o: $(SRC)/%.c Makefile
@@ -186,18 +182,7 @@ $(BUILD)/%/data.stamp: $(DATA_PAKS)
 	for f in $(DATA_PAKS); do cp $$f $(@D)/disc/$$(basename $$f | tr a-z A-Z); done
 	touch $@
 
-$(BUILD)/opendune.iso: $(BUILD)/opendune/data.stamp $(BUILD)/opendune/bank.stamp
-
-# instrument bank for the MIDI synthesizer (src/audio/midi_saturn.c)
-$(BUILD)/opendune/bank.stamp: tools/make_bank.py tools/xmi.py $(wildcard $(DATA)/SOUND.PAK $(DATA)/sound.pak) $(wildcard $(SOUNDFONT))
-	@mkdir -p $(@D)/disc
-	@if [ -f "$(SOUNDFONT)" ]; then \
-		python3 -B tools/make_bank.py $(firstword $(wildcard $(DATA)/SOUND.PAK $(DATA)/sound.pak)) $(SOUNDFONT) $(@D)/disc/INSTR.BNK; \
-	else \
-		echo "warning: no SoundFont at $(SOUNDFONT) (set SOUNDFONT=...): the disc will have no music"; \
-		rm -f $(@D)/disc/INSTR.BNK; \
-	fi
-	touch $@
+$(BUILD)/opendune.iso: $(BUILD)/opendune/data.stamp
 
 # keep the files the pattern rules produce along the way
 .SECONDARY:

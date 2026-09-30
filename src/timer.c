@@ -78,8 +78,7 @@ uint32 Timer_GetTime(void)
 #elif defined(__WATCOMC__)
 	return clock() * 1000 / CLOCKS_PER_SEC;
 #elif defined(SATURN)
-	/* frames counted by the VBlank-in interrupt */
-	return saturn_timer_ms();
+	return (uint32)(saturn_timer_us() / 1000);
 #else
 	struct timeval tv;
 	gettimeofday(&tv, NULL);

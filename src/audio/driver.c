@@ -110,7 +110,10 @@ static bool Drivers_SoundMusic_Init(bool enable)
 
 	if (!MPU_Init()) return false;
 
-#ifdef MUNT
+#if defined(SATURN)
+	/* the AdLib music (see mpu_adlib_saturn.c) */
+	if (!Drivers_Init(sound, "ADL")) return false;
+#elif defined(MUNT)
 	if (!Drivers_Init(sound, (IniFile_GetInteger("mt32midi", 1) != 0) ? "XMI" : "C55")) return false;
 #else
 	if (!Drivers_Init(sound, (IniFile_GetInteger("mt32midi", 0) != 0) ? "XMI" : "C55")) return false;
@@ -119,6 +122,9 @@ static bool Drivers_SoundMusic_Init(bool enable)
 
 #if defined(_WIN32)
 	MPU_StartThread(1000000 / 120);
+#elif defined(SATURN)
+	/* as often as possible: it keeps its own time */
+	Timer_Add(MPU_Interrupt, 0, false);
 #else
 	Timer_Add(MPU_Interrupt, 1000000 / 120, false);
 #endif

@@ -23,9 +23,6 @@ extern void scsp_free(int32_t offset);
 /* Copy unsigned 8-bit PCM to sound RAM as signed 8-bit PCM. */
 extern void scsp_upload_u8(int32_t offset, const uint8_t *pcm, uint32_t length);
 
-/* Copy signed 8-bit PCM to sound RAM as it is. */
-extern void scsp_upload_s8(int32_t offset, const int8_t *pcm, uint32_t length);
-
 /* A note on one slot: signed 8-bit samples in sound RAM. */
 typedef struct ScspNote {
 	int32_t offset;             /* start in sound RAM */
@@ -45,14 +42,8 @@ static inline uint16_t scsp_pitch(int octave, uint16_t fns)
 	return (uint16_t)(((octave & 0xF) << 11) | (fns & 0x3FF));
 }
 
-/* DIPAN value for a MIDI pan position (0 left, 64 centre, 127 right). */
-extern uint8_t scsp_pan(uint8_t midiPan);
-
 extern void scsp_note_on(int slot, const ScspNote *note);
 extern void scsp_note_off(int slot);
-extern void scsp_set_level(int slot, uint8_t level);
-extern void scsp_set_pitch(int slot, uint16_t pitch);
-extern void scsp_set_pan(int slot, uint8_t pan);
 
 /* Copy signed 16-bit PCM (count samples) to sound RAM. */
 extern void scsp_upload_s16(int32_t offset, const int16_t *pcm, uint32_t count);

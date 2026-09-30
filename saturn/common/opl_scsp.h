@@ -21,6 +21,10 @@ extern void opl_scsp_flush(void);
  * at least every few milliseconds. */
 extern void opl_scsp_update(void);
 
+/* Extra attenuation (0.375 dB units, 255: silent) for channels first..last,
+ * for volume and fades. */
+extern void opl_scsp_set_attenuation(int first, int last, uint8_t attenuation);
+
 /* Envelope mapping for tuning by ear: SCSP attack rate = OPL effective
  * rate / 2 + attackOffset (default 1), decay/release = OPL effective
  * rate / 2 + decayQuarters / 4 (default 9). */

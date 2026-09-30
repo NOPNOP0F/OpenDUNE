@@ -123,17 +123,6 @@ void scsp_upload_u8(int32_t offset, const uint8_t *pcm, uint32_t length)
 	if (i < length) *dst = (uint16_t)((pcm[i] ^ 0x80) << 8);
 }
 
-void scsp_upload_s8(int32_t offset, const int8_t *pcm, uint32_t length)
-{
-	volatile uint16_t *dst = SCSP_RAM + offset / 2;
-	uint32_t i;
-
-	for (i = 0; i + 1 < length; i += 2) {
-		*dst++ = (uint16_t)(((uint8_t)pcm[i] << 8) | (uint8_t)pcm[i + 1]);
-	}
-	if (i < length) *dst = (uint16_t)((uint8_t)pcm[i] << 8);
-}
-
 void scsp_upload_s16(int32_t offset, const int16_t *pcm, uint32_t count)
 {
 	volatile uint16_t *dst = SCSP_RAM + offset / 2;
@@ -157,14 +146,6 @@ void scsp_key(int slot, int on)
 	if (on) value |= KEY_ON;
 	SCSP_SLOT(slot, 0x00) = value;
 	SCSP_SLOT(slot, 0x00) = value | KEY_ON_EXECUTE;
-}
-
-uint8_t scsp_pan(uint8_t midiPan)
-{
-	/* 0x01-0x0F turn the left side down in 3 dB steps, 0x11-0x1F the right */
-	if (midiPan < 64) return (uint8_t)(0x10 + ((64 - midiPan) * 15 + 63) / 64);
-	if (midiPan > 64) return (uint8_t)(((midiPan - 64) * 15 + 62) / 63);
-	return 0;
 }
 
 void scsp_note_on(int slot, const ScspNote *note)
@@ -191,21 +172,6 @@ void scsp_note_on(int slot, const ScspNote *note)
 void scsp_note_off(int slot)
 {
 	SCSP_SLOT(slot, 0x00) = (SCSP_SLOT(slot, 0x00) & ~(KEY_ON | KEY_ON_EXECUTE)) | KEY_ON_EXECUTE;
-}
-
-void scsp_set_level(int slot, uint8_t level)
-{
-	SCSP_SLOT(slot, 0x0C) = level;
-}
-
-void scsp_set_pitch(int slot, uint16_t pitch)
-{
-	SCSP_SLOT(slot, 0x10) = pitch;
-}
-
-void scsp_set_pan(int slot, uint8_t pan)
-{
-	SCSP_SLOT(slot, 0x16) = (uint16_t)(0xE000 | ((pan & 0x1F) << 8));
 }
 
 void scsp_play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_t volume)
