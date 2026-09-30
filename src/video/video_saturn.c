@@ -85,6 +85,7 @@ void Video_Tick(void)
 	PadSaturn_Tick();
 
 	if (s_repaintAll) {
+		loading_screen_changed();
 		Video_CopyRows(0, SCREEN_HEIGHT);
 		s_repaintAll = false;
 		GFX_Screen_SetClean(SCREEN_0);
@@ -95,6 +96,7 @@ void Video_Tick(void)
 
 	area = GFX_Screen_GetDirtyArea(SCREEN_0);
 	if (area != NULL && area->top < area->bottom) {
+		loading_screen_changed();
 		Video_CopyRows(area->top, (area->bottom > SCREEN_HEIGHT) ? SCREEN_HEIGHT : area->bottom);
 	}
 	GFX_Screen_SetClean(SCREEN_0);

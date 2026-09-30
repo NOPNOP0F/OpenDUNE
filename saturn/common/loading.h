@@ -11,6 +11,9 @@
 /* The game is updating the screen. Call it from the video tick. */
 extern void loading_alive(void);
 
+/* Something changed on screen. Call it when the picture is updated. */
+extern void loading_screen_changed(void);
+
 /* The CD is being read (1) or not (0). */
 extern void loading_disc(int reading);
 
