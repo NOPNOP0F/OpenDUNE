@@ -182,6 +182,15 @@ static void PadSaturn_Clamp(void)
 
 void PadSaturn_SetPosition(uint16 x, uint16 y)
 {
+	/* A click only ever where A was pressed: if the cursor goes elsewhere
+	 * while A is held (the focus jumping to a new screen's button, to the
+	 * Options button after placing a structure, to the camera...), let go
+	 * of the button where it is, and ignore A until it is released. */
+	if ((x != s_x || y != s_y) && (s_previous & PAD_A) && s_controller != CONTROLLER_KEYBOARD_MOUSE) {
+		Mouse_EventHandler((uint16)s_x, (uint16)s_y, false, false);
+		s_previous &= ~PAD_A;
+		s_blockA = true;
+	}
 	s_x = x;
 	s_y = y;
 	PadSaturn_Clamp();
