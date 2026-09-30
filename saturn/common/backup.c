@@ -5,6 +5,7 @@
  * is read or written. The reset button is off while the library runs, as
  * SBL's sample does, so a reset can't leave a file half written. */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "backup.h"
@@ -136,6 +137,46 @@ int backup_has_cartridge(void)
 	present = s_config[BACKUP_CARTRIDGE].unit_id != 0;
 	bup_end();
 	return present;
+}
+
+/* Free bytes on a device, or -1 if it isn't there. */
+static int32_t bup_free(int device)
+{
+	BupStat stat;
+	int saved = s_device;
+	int32_t free_bytes = -1;
+
+	s_device = device;
+	if (bup_ready() && BUP_Stat((uint32_t)device, 0, &stat) == 0) free_bytes = (int32_t)stat.freesize;
+	s_device = saved;
+	return free_bytes;
+}
+
+void backup_choose(void)
+{
+	int32_t internal, cartridge;
+	uint16_t pad;
+
+	if (!bup_begin()) return;
+	if (s_config[BACKUP_CARTRIDGE].unit_id == 0) {
+		bup_end();
+		return;
+	}
+	internal = bup_free(BACKUP_INTERNAL);
+	cartridge = bup_free(BACKUP_CARTRIDGE);
+	bup_end();
+
+	printf("Backup memory cartridge found.\n\nSave games and settings go to:\n\n");
+	printf("  A  the Saturn's memory (%ld KB free)\n", (long)(internal < 0 ? 0 : internal / 1024));
+	printf("  C  the cartridge (%ld KB free)\n", (long)(cartridge < 0 ? 0 : cartridge / 1024));
+
+	while (smpc_pad_read() != 0) {}
+	do {
+		pad = smpc_pad_read();
+	} while ((pad & (PAD_A | PAD_C)) == 0);
+	s_device = (pad & PAD_C) ? BACKUP_CARTRIDGE : BACKUP_INTERNAL;
+	printf("\nUsing %s.\n", s_device == BACKUP_CARTRIDGE ? "the cartridge" : "the Saturn's memory");
+	while (smpc_pad_read() != 0) {}
 }
 
 void backup_select(int device)

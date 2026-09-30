@@ -74,6 +74,9 @@
 #ifdef TOS
 #include "rev.h"
 #endif
+#if defined(SATURN)
+#include "backup.h"
+#endif
 
 
 const char *window_caption = "OpenDUNE - v0.9";
@@ -1300,6 +1303,9 @@ int main(int argc, char **argv)
 	if(g_outlog != NULL) setvbuf(g_outlog, NULL, _IOLBF, 0);
 #endif
 #endif /* DOS */
+#if defined(SATURN)
+	backup_choose();
+#endif
 	CrashLog_Init();
 
 	VARIABLE_NOT_USED(argc);
