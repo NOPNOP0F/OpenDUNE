@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include "bios.h"
 #include "saturn_hw.h"
+#include "saturn_timer.h"
 #include "scsp.h"
 #include "smpc.h"
 
@@ -167,7 +168,13 @@ void scsp_key(int slot, int on)
 
 void scsp_note_on(int slot, const ScspNote *note)
 {
-	scsp_note_off(slot);
+	/* a slot still keyed on (a one-shot looping round its silent tail) is
+	 * only restarted if the SCSP sees the key off first: it looks at the
+	 * keys once a sample (22.7 us) */
+	if (SCSP_SLOT(slot, 0x00) & KEY_ON) {
+		scsp_note_off(slot);
+		saturn_delay_us(30);
+	}
 
 	SCSP_SLOT(slot, 0x00) = PCM_8BIT | ((note->loop ? 1 : 0) << 5) | ((note->offset >> 16) & 0xF);
 	SCSP_SLOT(slot, 0x02) = (uint16_t)note->offset;
