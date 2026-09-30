@@ -134,7 +134,7 @@ ENGINE_SRCS := \
 	tools.c unit.c video/video_fps.c video/video_saturn.c wsa.c
 
 ENGINE_OBJS := $(ENGINE_SRCS:%.c=$(BUILD)/engine/%.o) $(BUILD)/engine/rev.o
-ENGINE_CFLAGS := $(CFLAGS) -DSATURN -I../include
+ENGINE_CFLAGS := $(CFLAGS) -DSATURN -DDUNE_DATA_DIR='"CD"' -I../include
 
 $(BUILD)/engine/%.o: $(SRC)/%.c Makefile
 	@mkdir -p $(@D)
@@ -172,6 +172,8 @@ $(BUILD)/%/data.stamp: $(DATA_PAKS)
 	@mkdir -p $(@D)/disc
 	for f in $(DATA_PAKS); do cp $$f $(@D)/disc/$$(basename $$f | tr a-z A-Z); done
 	touch $@
+
+$(BUILD)/opendune.iso: $(BUILD)/opendune/data.stamp
 
 # keep the files the pattern rules produce along the way
 .SECONDARY:
