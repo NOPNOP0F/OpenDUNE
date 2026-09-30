@@ -11,11 +11,15 @@
 #define FRT_TCR     REG8(0xFFFFFE16UL)
 
 static volatile uint32_t s_frames;
+static volatile uint16_t s_frameStart;  /* free-running timer at the last VBlank */
 static uint32_t s_frameRate = 60;
 static void (*volatile s_vblankHook)(void);
 
+static uint16_t frt_read(void);
+
 static void vblank_in(void)
 {
+	s_frameStart = frt_read();
 	s_frames++;
 	if (s_vblankHook != NULL) s_vblankHook();
 }
@@ -51,6 +55,23 @@ void saturn_delay_us(uint32_t us)
 	uint32_t counts = us * 7 / 2 + 1;
 	uint16_t start = frt_read();
 	while ((uint16_t)(frt_read() - start) < counts) {}
+}
+
+uint64_t saturn_timer_us(void)
+{
+	uint32_t frames, since, frameUs = 1000000 / s_frameRate;
+	uint16_t start;
+
+	/* read the frame count and its start time consistently */
+	do {
+		frames = s_frames;
+		start = s_frameStart;
+		since = (uint16_t)(frt_read() - start);
+	} while (frames != s_frames);
+
+	since = since * 2 / 7;      /* about 3.5 counts per us, as in saturn_delay_us() */
+	if (since > frameUs) since = frameUs;
+	return (uint64_t)frames * frameUs + since;
 }
 
 uint32_t saturn_timer_frames(void)

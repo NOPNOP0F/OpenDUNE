@@ -14,6 +14,10 @@ extern uint32_t saturn_timer_frames(void);
 /* Milliseconds since saturn_timer_init(), with frame (16-20 ms) resolution. */
 extern uint32_t saturn_timer_ms(void);
 
+/* Microseconds since saturn_timer_init(): the frame count plus the time
+ * since the last VBlank, from the free-running timer. */
+extern uint64_t saturn_timer_us(void);
+
 /* Busy-wait at least us microseconds (at most 18000), timed by the SH-2
  * free-running timer. */
 extern void saturn_delay_us(uint32_t us);
