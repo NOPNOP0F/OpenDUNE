@@ -264,6 +264,21 @@ void *WSA_LoadFile(const char *filename, void *wsa, uint32 wsaSize, bool reserve
 	if (wsaSize == 0) wsaSize = bufferSizeOptimal;
 	if (wsaSize == 1) wsaSize = bufferSizeMinimal;
 
+#if defined(SATURN)
+	/* Frames that don't fit are read from the file as they are shown, which
+	 * takes a CD seek or two each: use memory of our own for the whole
+	 * animation instead of the caller's buffer, if there is enough. */
+	if (wsa != NULL && wsaSize < bufferSizeOptimal) {
+		void *own = calloc(1, bufferSizeOptimal);
+
+		if (own != NULL) {
+			wsa = own;
+			wsaSize = bufferSizeOptimal;
+			flags.malloced = true;
+		}
+	}
+#endif
+
 	if (wsa == NULL) {
 		if (wsaSize == 0) {
 			wsaSize = bufferSizeOptimal;
@@ -277,7 +292,7 @@ void *WSA_LoadFile(const char *filename, void *wsa, uint32 wsaSize, bool reserve
 
 		wsa = calloc(1, wsaSize);
 		flags.malloced = true;
-	} else {
+	} else if (!flags.malloced) {
 		flags.notmalloced = true;
 	}
 
