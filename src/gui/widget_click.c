@@ -703,8 +703,8 @@ static WindowDesc s_backupWindowDesc = {
 	/* addArrows   */ false,
 	/* widgetCount */ 2,
 	{ /* widgets */
-		{ (uint16)-21,   8, 30, 72, 15, STR_NULL, 0 },
-		{ (uint16)-22, 224, 30, 72, 15, STR_NULL, 0 },
+		{ (uint16)-21,   8, 32, 88, 15, STR_NULL, 0 },
+		{ (uint16)-22, 208, 32, 88, 15, STR_NULL, 0 },
 		{ STR_NULL,      0,  0,  0,  0, STR_NULL, 0 },
 	}
 };
