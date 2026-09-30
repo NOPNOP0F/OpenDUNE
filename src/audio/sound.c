@@ -30,6 +30,7 @@ static uint16 s_spokenWords[NUM_SPEECH_PARTS];   /*!< Buffer with speech to play
 static int16 s_currentVoicePriority;            /*!< Priority of the currently playing Speech */
 
 static void *Sound_LoadVoc(const char *filename, uint32 *retFileSize);
+static bool Voice_GetFilename(uint16 voice, uint16 voiceSet, char *filename, size_t size);
 
 static void Driver_Music_Play(int16 index, uint16 volume)
 {
@@ -129,6 +130,31 @@ void Music_InitMT32(void)
 }
 
 /**
+ * Load a voice that should have been preloaded but isn't, into g_readBuffer.
+ * On the Saturn, sound RAM can't hold every preloaded voice: the ones that
+ * didn't fit are read from the disc when they are played.
+ * @param voice The voice.
+ * @return True if the voice is now in g_readBuffer.
+ */
+static bool Voice_LoadWhenNeeded(uint16 voice)
+{
+#if defined(SATURN)
+	char filename[16];
+	uint32 size;
+
+	if (g_readBuffer == NULL) return false;
+	if (!Voice_GetFilename(voice, s_currentVoiceSet, filename, sizeof(filename))) return false;
+	if (!File_Exists_GetSize(filename, &size) || size > g_readBufferSize) return false;
+
+	Driver_Voice_LoadFile(filename, g_readBuffer, g_readBufferSize);
+	return true;
+#else
+	VARIABLE_NOT_USED(voice);
+	return false;
+#endif
+}
+
+/**
  * Play a voice. Volume is based on distance to position.
  * @param voiceID Which voice to play.
  * @param position Which position to play it on.
@@ -151,9 +177,10 @@ void Voice_PlayAtTile(int16 voiceID, tile32 position)
 
 	index = g_table_voiceMapping[voiceID];
 
-	if (g_enableVoices != 0 && index != 0xFFFF && g_voiceData[index] != NULL && g_table_voices[index].priority >= s_currentVoicePriority) {
+	if (g_enableVoices != 0 && index != 0xFFFF && g_table_voices[index].priority >= s_currentVoicePriority &&
+			(g_voiceData[index] != NULL || Voice_LoadWhenNeeded(index))) {
 		s_currentVoicePriority = g_table_voices[index].priority;
-		memmove(g_readBuffer, g_voiceData[index], g_voiceDataSize[index]);
+		if (g_voiceData[index] != NULL) memmove(g_readBuffer, g_voiceData[index], g_voiceDataSize[index]);
 
 		Driver_Voice_Play(g_readBuffer, s_currentVoicePriority);
 	} else {
@@ -366,6 +393,8 @@ void Sound_StartSound(uint16 index)
 
 			Driver_Voice_LoadFile(filenameBuffer, g_readBuffer, g_readBufferSize);
 
+			Driver_Voice_Play(g_readBuffer, 0xFF);
+		} else if (Voice_LoadWhenNeeded(index)) {
 			Driver_Voice_Play(g_readBuffer, 0xFF);
 		}
 	}
