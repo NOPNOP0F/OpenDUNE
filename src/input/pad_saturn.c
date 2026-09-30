@@ -10,9 +10,9 @@
  *                (on the campaign map, between the regions to choose);
  *                camera mode (missions): scrolls the map under a cursor
  *                fixed in the middle of the map view.
- *   C            in missions, a tap switches between UI and camera mode.
- *                Targeting and placing a structure use the camera whatever
- *                the mode.
+ *   C            in missions, a tap switches between UI and camera mode;
+ *                held with the D-pad, scrolls the camera fast. Targeting
+ *                and placing a structure use the camera whatever the mode.
  *   A            left mouse button (press the focused button, select,
  *                target, place; hold to drag)
  *   B            cancel (Esc)
@@ -350,13 +350,14 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 
 	if (pressed & PAD_A) s_pressA = true;
 
-	/* the D-pad: requests for the focus and camera, repeating when held */
+	/* the D-pad: requests for the focus and camera, repeating when held;
+	 * with C held the camera scrolls a tile every frame */
 	if (pad & PAD_DIRECTIONS) {
 		bool repeat;
 
 		if (pressed & PAD_DIRECTIONS) s_repeatFrames = 0;
 		if (s_cameraActive && controller != CONTROLLER_3D) {
-			repeat = s_repeatFrames == 0 ||
+			repeat = s_repeatFrames == 0 || (pad & PAD_C) != 0 ||
 				(s_repeatFrames >= SCROLL_FIRST && (s_repeatFrames - SCROLL_FIRST) % SCROLL_NEXT == 0);
 		} else {
 			repeat = s_repeatFrames == 0 || (s_repeatFrames >= REPEAT_FIRST && (s_repeatFrames - REPEAT_FIRST) % REPEAT_NEXT == 0);
@@ -404,7 +405,7 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 	if (pressed & PAD_L) {
 		s_lTapFrames = 0;
 	} else if (s_lTapFrames >= 0 && (pad & PAD_L)) {
-		if (++s_lTapFrames > TAP_FRAMES || (pressed & ~PAD_C) != 0) s_lTapFrames = -1;
+		if (++s_lTapFrames > TAP_FRAMES || (pad & ~(PAD_L | PAD_C)) != 0) s_lTapFrames = -1;
 	}
 	if ((released & PAD_L) && s_lTapFrames >= 0) {
 		s_cycle = (pad & PAD_C) ? CYCLE_STRUCTURE : CYCLE_UNIT;
@@ -413,10 +414,11 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 	}
 
 	if (controller == CONTROLLER_PAD) {
+		/* a tap: C alone (held with the D-pad it scrolls fast instead) */
 		if (pressed & PAD_C) {
-			s_cTapFrames = 0;
+			s_cTapFrames = ((pad & ~PAD_C) == 0) ? 0 : -1;
 		} else if (s_cTapFrames >= 0 && (pad & PAD_C)) {
-			if (++s_cTapFrames > TAP_FRAMES || (pressed & ~PAD_C) != 0) s_cTapFrames = -1;
+			if (++s_cTapFrames > TAP_FRAMES || (pad & ~PAD_C) != 0) s_cTapFrames = -1;
 		}
 		if ((released & PAD_C) && s_cTapFrames >= 0) {
 			s_toggleCamera = true;
