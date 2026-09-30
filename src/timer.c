@@ -1,7 +1,7 @@
 /** @file src/timer.c Timer routines. */
 
 #include <stdlib.h>
-#if !defined(_MSC_VER) && !defined(TOS) && !defined(__WATCOMC__)
+#if !defined(_MSC_VER) && !defined(TOS) && !defined(__WATCOMC__) && !defined(SATURN)
 	#include <sys/time.h>
 #endif /* _MSC_VER */
 #if defined(_WIN32)
@@ -18,6 +18,8 @@
 	#include <time.h>
 #elif defined(__HAIKU__)
 	#include <OS.h>
+#elif defined(SATURN)
+	#include "saturn_timer.h"
 #else
 	/* Linux / Mac OS X / etc. */
 	#if !defined(__USE_POSIX)
@@ -75,6 +77,9 @@ uint32 Timer_GetTime(void)
 	return get_sysvar(_hz_200) * 5;
 #elif defined(__WATCOMC__)
 	return clock() * 1000 / CLOCKS_PER_SEC;
+#elif defined(SATURN)
+	/* frames counted by the VBlank-in interrupt */
+	return saturn_timer_ms();
 #else
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
@@ -130,7 +135,7 @@ static void Timer_InterruptRun(int arg)
 	timerLock = false;
 }
 
-#if defined(TOS) || defined(DOS)
+#if defined(TOS) || defined(DOS) || defined(SATURN)
 void SleepAndProcessBackgroundTasks(void)
 {
 	Timer_InterruptRun(0);
@@ -212,7 +217,7 @@ void CALLBACK Timer_InterruptWindows(LPVOID arg, BOOLEAN TimerOrWaitFired) {
 }
 #endif /* _WIN32 */
 
-#if !defined(TOS) && !defined(DOS) && !defined(__HAIKU__)
+#if !defined(TOS) && !defined(DOS) && !defined(__HAIKU__) && !defined(SATURN)
 
 /**
  * Suspend the timer interrupt handling.
@@ -270,6 +275,9 @@ void Timer_Init(void)
 #endif
 #elif defined(DOS) || defined(__HAIKU__)
 	/* */
+#elif defined(SATURN)
+	saturn_timer_init();
+	s_timerLastTime = Timer_GetTime();
 #else
 	{
 		struct sigaction timerSignal;
@@ -280,7 +288,7 @@ void Timer_Init(void)
 		sigaction(SIGALRM, &timerSignal, NULL);
 	}
 #endif /* _WIN32 */
-#if !defined(TOS) && !defined(DOS) && !defined(__HAIKU__)
+#if !defined(TOS) && !defined(DOS) && !defined(__HAIKU__) && !defined(SATURN)
 	Timer_InterruptResume();
 #endif /* !defined(TOS) && !defined(DOS) */
 }
@@ -290,7 +298,7 @@ void Timer_Init(void)
  */
 void Timer_Uninit(void)
 {
-#if !defined(TOS) && !defined(DOS) && !defined(__HAIKU__)
+#if !defined(TOS) && !defined(DOS) && !defined(__HAIKU__) && !defined(SATURN)
 	Timer_InterruptSuspend();
 #endif /* !defined(TOS) && !defined(DOS) */
 #if defined(_WIN32)
