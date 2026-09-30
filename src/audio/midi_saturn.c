@@ -12,7 +12,7 @@
  *   32-byte entries: u32 offset, u32 length, u32 loop start, u32 loop end
  *     (0: no loop), s16 pitch (cents at the root key, relative to 44100 Hz),
  *     u8 root key, u8 attenuation (0.375 dB), u8 attack, decay 1, decay
- *     level, decay 2, release (SCSP EG values), u8 pan (MIDI, drums), u16 0,
+ *     level, decay 2, release (SCSP EG values), u8 pan (MIDI, drums), 6 bytes 0,
  *   then the samples, signed 8-bit. */
 
 #include <stdio.h>

@@ -21,6 +21,7 @@ import numpy as np
 import xmi
 
 OUTPUT_RATE = 44100
+ENTRY_SIZE = 32             # bytes per sample entry, as midi_saturn.c reads them
 MIN_RATE = 8000
 MAX_RATE = 22050
 MAX_SECONDS_MELODIC = 0.3   # kept of a sample; longer ones get a new loop
@@ -258,11 +259,13 @@ class Voice:
 
     def entry(self, offset):
         decay_level = int(max(0, min(31, round(self.sustain_db / EG_RANGE_DB * 31))))
-        return struct.pack('>IIIIhBBBBBBBBH',
-                           offset, len(self.out), self.out_loop_start, self.out_loop_end,
-                           max(-32768, min(32767, self.out_pitch)), self.root_key, self.out_attenuation,
-                           attack_rate(self.attack), decay_rate(self.decay), decay_level,
-                           0, decay_rate(self.release), self.pan, 0)
+        entry = struct.pack('>IIIIhBBBBBBBB6x',
+                            offset, len(self.out), self.out_loop_start, self.out_loop_end,
+                            max(-32768, min(32767, self.out_pitch)), self.root_key, self.out_attenuation,
+                            attack_rate(self.attack), decay_rate(self.decay), decay_level,
+                            0, decay_rate(self.release), self.pan)
+        assert len(entry) == ENTRY_SIZE
+        return entry
 
 
 # --- what the game uses ---------------------------------------------------------
