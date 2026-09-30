@@ -10,6 +10,10 @@
 #define BIOS_SETUINT(vector, handler) \
 	((**(void (**)(uint32_t, void (*)(void)))0x06000300)((vector), (handler)))
 
+/* Put a handler directly into the SH-2 vector table (it must end in RTE). */
+#define BIOS_SETSINT(vector, handler) \
+	((**(void (**)(uint32_t, void (*)(void)))0x06000310)((vector), (handler)))
+
 /* SCU interrupt mask = (mask & and_mask) | or_mask; a set bit masks. */
 #define BIOS_CHGSCUIM(and_mask, or_mask) \
 	((**(void (**)(uint32_t, uint32_t))0x06000344)((and_mask), (or_mask)))

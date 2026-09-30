@@ -1,7 +1,7 @@
 /* saturn/common/crt0.S - entry point of the 1st read file.
  *
  * The BIOS loads the file at the 1st read address from IP.BIN (0x06004000)
- * and jumps here. Set the stack, clear .bss, run main(). */
+ * and jumps here. Set the stack, clear .bss, run saturn_start(). */
 
 	.section .text.start, "ax"
 	.global	start
@@ -18,11 +18,11 @@ start:
 	bra	1b
 	add	#4, r0
 2:
-	mov.l	main_ptr, r0
+	mov.l	start_ptr, r0
 	jsr	@r0
 	nop
 
-	/* main() should not return; hang if it does */
+	/* saturn_start() does not return; hang if it does */
 3:	bra	3b
 	nop
 
@@ -30,4 +30,4 @@ start:
 stack_top:	.long	__stack_top
 bss_start:	.long	__bss_start
 bss_end:	.long	__bss_end
-main_ptr:	.long	_main
+start_ptr:	.long	_saturn_start
