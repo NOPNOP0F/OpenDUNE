@@ -1,6 +1,6 @@
-# saturn/Makefile - Saturn build: IP.BIN, start-up code and disc images.
+# saturn/Makefile - Saturn build: IP.BIN, runtime and disc images.
 #
-#   make            build build/ip.bin and the start-up code
+#   make            build build/ip.bin and the runtime
 #   make clean
 #
 # Needs the toolchain from toolchain/build-toolchain.sh and the SDK in ../SSSDK.
@@ -18,8 +18,8 @@ LDFLAGS   := -m2 -nostdlib -nostartfiles -Wl,--no-warn-rwx-segments
 
 SEGA_IP_OBJS := sys_sec sys_arej sys_aret sys_areu sys_aree sys_init
 
-.PHONY: all clean
-all: $(BUILD)/ip.bin $(BUILD)/common/crt0.o
+.PHONY: all build-all clean
+all: build-all
 
 # --- IP.BIN ---------------------------------------------------------------
 
@@ -41,9 +41,15 @@ $(BUILD)/ip.elf: $(IP_OBJS) ip/ip.ld
 $(BUILD)/ip.bin: $(BUILD)/ip.elf
 	$(OBJCOPY) -O binary $< $@
 
-# --- start-up code ----------------------------------------------------------
+# --- runtime shared by every program ---------------------------------------
 
-$(BUILD)/common/crt0.o: common/crt0.S | $(BUILD)/common
+COMMON_HDRS := $(wildcard common/*.h)
+RUNTIME_OBJS := $(patsubst common/%,$(BUILD)/common/%.o,$(basename $(wildcard common/*.c common/*.S)))
+
+$(BUILD)/common/%.o: common/%.S | $(BUILD)/common
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/common/%.o: common/%.c $(COMMON_HDRS) | $(BUILD)/common
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # --- disc images -------------------------------------------------------------
@@ -57,6 +63,8 @@ $(BUILD)/%.iso: $(BUILD)/ip.bin $(BUILD)/%/disc/0.BIN tools/mkdisc.sh
 
 $(BUILD)/ip $(BUILD)/common:
 	mkdir -p $@
+
+build-all: $(BUILD)/ip.bin $(RUNTIME_OBJS)
 
 clean:
 	rm -rf $(BUILD)
