@@ -134,6 +134,31 @@ void scsp_upload_s8(int32_t offset, const int8_t *pcm, uint32_t length)
 	if (i < length) *dst = (uint16_t)((uint8_t)pcm[i] << 8);
 }
 
+void scsp_upload_s16(int32_t offset, const int16_t *pcm, uint32_t count)
+{
+	volatile uint16_t *dst = SCSP_RAM + offset / 2;
+	uint32_t i;
+	for (i = 0; i < count; i++) dst[i] = (uint16_t)pcm[i];
+}
+
+void scsp_slot_write(int slot, int reg, uint16_t value)
+{
+	SCSP_SLOT(slot, reg) = value;
+}
+
+uint16_t scsp_slot_read(int slot, int reg)
+{
+	return SCSP_SLOT(slot, reg);
+}
+
+void scsp_key(int slot, int on)
+{
+	uint16_t value = SCSP_SLOT(slot, 0x00) & ~(KEY_ON | KEY_ON_EXECUTE);
+	if (on) value |= KEY_ON;
+	SCSP_SLOT(slot, 0x00) = value;
+	SCSP_SLOT(slot, 0x00) = value | KEY_ON_EXECUTE;
+}
+
 uint8_t scsp_pan(uint8_t midiPan)
 {
 	/* 0x01-0x0F turn the left side down in 3 dB steps, 0x11-0x1F the right */

@@ -9,6 +9,7 @@
 TOOLCHAIN ?= $(CURDIR)/toolchain/install
 PREFIX    := $(TOOLCHAIN)/bin/sh-elf-
 CC        := $(PREFIX)gcc
+CXX       := $(PREFIX)g++
 OBJCOPY   := $(PREFIX)objcopy
 AR        := $(PREFIX)ar
 
@@ -24,6 +25,8 @@ DATA      ?= ../bin/data
 SOUNDFONT ?= /usr/share/soundfonts/FluidR3_GM.sf2
 
 CFLAGS    := -m2 -O2 -std=gnu11 -Wall -Wextra -Icommon
+# C++ only for the AdLib driver: no exceptions, RTTI or C++ library
+CXXFLAGS  := -m2 -O2 -std=gnu++11 -Wall -fno-exceptions -fno-rtti -fno-use-cxa-atexit -fno-threadsafe-statics
 LDFLAGS   := -m2 -nostartfiles -Wl,--no-warn-rwx-segments -T common/saturn.ld
 SBL_LIBS  := $(BUILD)/libsbl.a $(BUILD)/libcdc.a
 LIBS      := $(SBL_LIBS) -lc -lgcc
@@ -115,6 +118,12 @@ $(BUILD)/common/%.o: common/%.c $(COMMON_HDRS) Makefile
 $(BUILD)/common/files.o: common/files.c $(COMMON_HDRS) $(BUILD)/sbl/.copied Makefile
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -D_SH -DMODEL_S -I$(BUILD)/sbl/inc -c $< -o $@
+
+# --- the AdLib driver (C++) ------------------------------------------------
+
+$(BUILD)/cxx/adl_driver.o: $(SRC)/audio/adl_driver.cpp $(SRC)/audio/adl_driver.h Makefile
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # --- opendune: the engine ---------------------------------------------------
 

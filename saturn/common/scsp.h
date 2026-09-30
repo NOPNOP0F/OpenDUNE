@@ -54,6 +54,17 @@ extern void scsp_set_level(int slot, uint8_t level);
 extern void scsp_set_pitch(int slot, uint16_t pitch);
 extern void scsp_set_pan(int slot, uint8_t pan);
 
+/* Copy signed 16-bit PCM (count samples) to sound RAM. */
+extern void scsp_upload_s16(int32_t offset, const int16_t *pcm, uint32_t count);
+
+/* Raw slot register access for drivers that set up slots themselves
+ * (opl_scsp.c); reg is the byte offset 0x00-0x16 within the slot. */
+extern void scsp_slot_write(int slot, int reg, uint16_t value);
+extern uint16_t scsp_slot_read(int slot, int reg);
+
+/* KEY_ON (on = 1) or KEY_OFF a slot, keeping its other settings. */
+extern void scsp_key(int slot, int on);
+
 /* Play samples (signed 8-bit, at offset in sound RAM, at most 65535 of them)
  * once on slot, at rate Hz; volume 0..255. */
 extern void scsp_play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_t volume);

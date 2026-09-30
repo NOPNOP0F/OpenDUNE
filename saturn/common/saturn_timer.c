@@ -5,6 +5,11 @@
 #include "saturn_hw.h"
 #include "saturn_timer.h"
 
+/* SH-2 free-running timer (SH7604 Hardware Manual, section 11) */
+#define FRT_FRCH    REG8(0xFFFFFE12UL)
+#define FRT_FRCL    REG8(0xFFFFFE13UL)
+#define FRT_TCR     REG8(0xFFFFFE16UL)
+
 static volatile uint32_t s_frames;
 static uint32_t s_frameRate = 60;
 static void (*volatile s_vblankHook)(void);
@@ -25,9 +30,27 @@ void saturn_timer_init(void)
 	s_frameRate = (VDP2_TVSTAT & VDP2_TVSTAT_PAL) ? 50 : 60;
 	s_frames = 0;
 
+	/* free-running timer counts at the system clock / 8 (about 3.5 MHz) */
+	FRT_TCR = 0x00;
+
 	BIOS_SETUINT(SCU_VECTOR_VBLANK_IN, vblank_in);
 	BIOS_CHGSCUIM(~SCU_MASK_VBLANK_IN, 0);
 	cpu_interrupts_enable();
+}
+
+static uint16_t frt_read(void)
+{
+	uint8_t high = FRT_FRCH;    /* reading the high byte latches the low one */
+	return (uint16_t)((high << 8) | FRT_FRCL);
+}
+
+void saturn_delay_us(uint32_t us)
+{
+	/* 26.8 MHz / 8 (NTSC 320 dots; PAL is close): about 3.36 counts per us,
+	 * rounded up so the wait is never shorter */
+	uint32_t counts = us * 7 / 2 + 1;
+	uint16_t start = frt_read();
+	while ((uint16_t)(frt_read() - start) < counts) {}
 }
 
 uint32_t saturn_timer_frames(void)
