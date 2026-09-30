@@ -152,6 +152,7 @@ static volatile bool s_stickLast = false;           /* 3D Controller: stick used
 static volatile bool s_pressA = false;              /* A pressed (for PadSaturn_PickRegion()) */
 static volatile uint16 s_keyA = 0;                  /* a key A sends instead of a click, or 0 */
 static volatile bool s_blockA = false;              /* ignore A until it is released */
+static volatile bool s_useSound = false;            /* A on the focus makes the use sound */
 static enum { CYCLE_NONE, CYCLE_UNIT, CYCLE_STRUCTURE } s_cycle = CYCLE_NONE;
 
 /* what PadSaturn_HandleEvents() found */
@@ -194,6 +195,19 @@ void PadSaturn_SetRegion(uint16 minX, uint16 maxX, uint16 minY, uint16 maxY)
 	s_maxY = maxY;
 	PadSaturn_Clamp();
 	s_positionChanged = true;
+}
+
+/* The sound of moving the focus: its own, as the game's effects depend on
+ * the music loaded (the menus' has none that fits). */
+static void PadSaturn_Blip(void)
+{
+	if (g_gameConfig.sounds != 0) DSP_Saturn_Blip(DSP_BLIP_FOCUS);
+}
+
+/* The sound of pressing A on what is focused. */
+static void PadSaturn_UseSound(void)
+{
+	if (g_gameConfig.sounds != 0) DSP_Saturn_Blip(DSP_BLIP_USE);
 }
 
 static void PadSaturn_KeyTap(uint8 scancode)
@@ -363,7 +377,10 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 
 	if (controller != CONTROLLER_KEYBOARD && (pad & PAD_RESET) == PAD_RESET) BIOS_EXECDMP();
 
-	if (pressed & PAD_A) s_pressA = true;
+	if (pressed & PAD_A) {
+		s_pressA = true;
+		if (s_useSound && saturn_timer_frames() - s_handledFrame <= FOCUS_STALE) PadSaturn_UseSound();
+	}
 
 	/* the D-pad: requests for the focus and camera, repeating when held;
 	 * with C held the camera scrolls a tile every frame */
@@ -457,13 +474,6 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 		if (pressed & PAD_Z) PadSaturn_CommandButton(10);
 		if (pressed & PAD_R) PadSaturn_CommandButton(11);
 	}
-}
-
-/* The sound of moving the focus: its own, as the game's effects depend on
- * the music loaded (the menus' has none that fits). */
-static void PadSaturn_Blip(void)
-{
-	if (g_gameConfig.sounds != 0) DSP_Saturn_Blip();
 }
 
 /* Brackets round the corners of a rectangle, with a dark edge outside. */
@@ -835,6 +845,7 @@ void PadSaturn_HandleEvents(Widget *list)
 		s_cameraActive = true;
 		s_focusActive = false;
 		s_keyA = 0;
+		s_useSound = false;
 		PadSaturn_Camera();
 		lastList = list;
 		return;
@@ -866,6 +877,9 @@ void PadSaturn_HandleEvents(Widget *list)
 		s_focus = next;
 	}
 	s_keyA = (s_focus != NULL && s_focus->clickProc == &GUI_Mentat_List_Click) ? KEY_RETURN : 0;
+	/* the use sound, but not for scrolling */
+	s_useSound = s_focus != NULL && s_focus->clickProc != &GUI_Widget_Scrollbar_ArrowUp_Click &&
+		s_focus->clickProc != &GUI_Widget_Scrollbar_ArrowDown_Click;
 	s_focusActive = s_focus != NULL;
 	PadSaturn_ReticleOnFocus();
 }
@@ -880,6 +894,7 @@ void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeig
 	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
 	s_handledFrame = saturn_timer_frames();
 	s_keyA = 0;
+	s_useSound = true;
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE || lines == 0) {
 		s_focusActive = false;
 		return;
@@ -928,6 +943,7 @@ int PadSaturn_PickRegion(const int16 *x, const int16 *y, const bool *usable, int
 	}
 	s_handledFrame = saturn_timer_frames();
 	s_keyA = 0;
+	s_useSound = true;
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE) return -1;
 
 	sr = cpu_interrupts_disable();

@@ -121,25 +121,31 @@ uint8 DSP_GetStatus(void)
 	return (s_endUs != 0 && saturn_timer_us() < s_endUs) ? 2 : 0;
 }
 
-void DSP_Saturn_Blip(void)
+void DSP_Saturn_Blip(DSPBlip blip)
 {
 	ScspNote note;
 
 	if (s_blip < 0) return;
-	/* about 1.4 kHz (32 samples a cycle at 44.8 kHz), dying away in some
-	 * 130 ms like the game's own blip (effect 38) */
 	note.offset = s_blip;
 	note.loopStart = 0;
 	note.end = BLIP_SAMPLES - 1;
 	note.loop = 1;
 	note.attack = 31;
-	note.decay1 = 21;
 	note.decayLevel = 31;
-	note.decay2 = 21;
 	note.release = 31;
-	note.level = 0x28;
-	note.pitch = scsp_pitch(0, 16);
 	note.pan = 0;
+	if (blip == DSP_BLIP_USE) {
+		/* about 880 Hz (32 samples a cycle at 28.2 kHz), some 250 ms */
+		note.decay1 = note.decay2 = 19;
+		note.level = 0x20;
+		note.pitch = scsp_pitch(-1, 284);
+	} else {
+		/* about 1.4 kHz (32 samples a cycle at 44.8 kHz), dying away in
+		 * some 130 ms like the game's own blip (effect 38) */
+		note.decay1 = note.decay2 = 21;
+		note.level = 0x28;
+		note.pitch = scsp_pitch(0, 16);
+	}
 	scsp_note_on(BLIP_SLOT, &note);
 }
 
