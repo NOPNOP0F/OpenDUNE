@@ -36,7 +36,7 @@ typedef struct SaturnVoice {
 static bool s_ready = false;
 static int32 s_scratch = -1;
 static uint32 s_endFrame = 0;   /* frame at which the playing voice ends */
-static int32 s_playing = -1;    /* sound RAM offset of the playing voice */
+static int32 s_playing = -1;    /* sound RAM offset of the voice on the slot, playing or done */
 
 /* Find the PCM data of a VOC: first block, type 1, 8-bit unsigned. */
 static bool DSP_ParseVoc(const uint8 *data, const uint8 **pcm, uint32 *length, uint32 *rate)
@@ -72,6 +72,7 @@ void DSP_Stop(void)
 	if (!s_ready) return;
 	scsp_stop(VOICE_SLOT);
 	s_endFrame = 0;
+	s_playing = -1;
 }
 
 static void DSP_PlayFromSoundRam(int32 offset, uint32 samples, uint32 rate)
@@ -147,7 +148,9 @@ void DSP_Saturn_FreeVoc(void *data)
 	SaturnVoice *voice = data;
 	if (voice == NULL) return;
 	if (voice->magic == DESCRIPTOR_MAGIC) {
-		if (DSP_Saturn_IsPlaying(voice)) DSP_Stop();
+		/* the slot loops round the end of the last voice even after it has
+		 * finished: let it go before the sound RAM is used for something else */
+		if (voice->offset == s_playing) DSP_Stop();
 		scsp_free(voice->offset);
 	}
 	free(voice);
