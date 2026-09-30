@@ -15,7 +15,10 @@
 #include "../os/error.h"
 
 #include "console.h"
+#include "loading.h"
 #include "saturn_hw.h"
+#include "saturn_timer.h"
+#include "smpc.h"
 #include "vdp2.h"
 
 enum {
@@ -26,6 +29,13 @@ enum {
 static uint8 *s_framebuffer = NULL;
 static uint16 s_screenOffset = 0;   /* VGA start address, in units of 4 bytes */
 static bool s_repaintAll = true;
+
+/* The VBlank interrupt: the controllers, and the loading indicator. */
+static void Video_VBlank(void)
+{
+	smpc_vblank();
+	loading_vblank();
+}
 
 bool Video_Init(int screen_magnification, VideoScaleFilter filter)
 {
@@ -41,6 +51,7 @@ bool Video_Init(int screen_magnification, VideoScaleFilter filter)
 	/* from here on the game owns the screen; the console only records */
 	console_release();
 	PadSaturn_Init();
+	saturn_timer_set_vblank_hook(Video_VBlank);
 	vdp2_bitmap_init();
 	vdp2_display_on();
 	s_repaintAll = true;
@@ -70,6 +81,7 @@ void Video_Tick(void)
 
 	if (s_framebuffer == NULL) return;
 
+	loading_alive();
 	PadSaturn_Tick();
 
 	if (s_repaintAll) {
