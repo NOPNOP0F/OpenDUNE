@@ -28,6 +28,9 @@
 #include "table/strings.h"
 #include "timer.h"
 #include "wsa.h"
+#if defined(SATURN)
+#include "loading.h"
+#endif
 
 
 static const HouseAnimation_Subtitle    *s_houseAnimation_subtitle = NULL;    /*!< Subtitle part of animation data. */
@@ -934,6 +937,9 @@ void GameLoop_GameEndAnimation(void)
 	const HouseAnimation_SoundEffect *soundEffect;
 	uint16 sound;
 
+#if defined(SATURN)
+	loading_enable(0);      /* reading as it goes, with its own pictures */
+#endif
 	Voice_LoadVoices(0xFFFE);
 
 	switch (g_playerHouseID) {
@@ -971,6 +977,9 @@ void GameLoop_GameEndAnimation(void)
 	GameLoop_FinishAnimation();
 
 	GameLoop_GameCredits();
+#if defined(SATURN)
+	loading_enable(1);
+#endif
 }
 
 /**
@@ -1056,6 +1065,9 @@ logos_exit:
  */
 void GameLoop_GameIntroAnimation(void)
 {
+#if defined(SATURN)
+	loading_enable(0);      /* reading as it goes, with its own pictures */
+#endif
 	GUI_ChangeSelectionType(SELECTIONTYPE_INTRO);
 
 	Gameloop_Logos();
@@ -1078,4 +1090,7 @@ void GameLoop_GameIntroAnimation(void)
 	}
 
 	GUI_ChangeSelectionType(SELECTIONTYPE_MENTAT);
+#if defined(SATURN)
+	loading_enable(1);
+#endif
 }

@@ -28,6 +28,7 @@ static volatile uint32_t s_changed = 0;     /* frame the picture last changed */
 static volatile int s_reading = 0;          /* the CD is being read now */
 static uint32_t s_readFrames = 0;           /* a bit a frame, the latest lowest: read then */
 static int s_shown = -1;                    /* dots shown, -1 when hidden */
+static volatile int s_enabled = 1;          /* off in the cutscenes */
 static uint32_t s_shownSince;
 
 static void draw_text(const char *text, int colour)
@@ -61,6 +62,11 @@ void loading_screen_changed(void)
 	s_changed = saturn_timer_frames();
 }
 
+void loading_enable(int enabled)
+{
+	s_enabled = enabled;
+}
+
 void loading_disc(int reading)
 {
 	s_reading = reading;
@@ -75,8 +81,8 @@ void loading_vblank(void)
 	s_readFrames = (s_readFrames << 1) | (s_reading ? 1 : 0);
 	if (s_alive == 0) return;       /* the game isn't showing anything yet */
 
-	busy = frames - s_alive >= STALE_FRAMES ||
-		(bits(s_readFrames) >= BUSY_FRAMES && frames - s_changed >= STILL_FRAMES);
+	busy = s_enabled && (frames - s_alive >= STALE_FRAMES ||
+		(bits(s_readFrames) >= BUSY_FRAMES && frames - s_changed >= STILL_FRAMES));
 	if (!busy) {
 		if (s_shown >= 0) {
 			draw_text("          ", VDP2_OVERLAY_CLEAR);

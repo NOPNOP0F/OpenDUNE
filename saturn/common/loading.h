@@ -14,6 +14,9 @@ extern void loading_alive(void);
 /* Something changed on screen. Call it when the picture is updated. */
 extern void loading_screen_changed(void);
 
+/* Allow the indicator (1) or not (0): the cutscenes play their own pictures. */
+extern void loading_enable(int enabled);
+
 /* The CD is being read (1) or not (0). */
 extern void loading_disc(int reading);
 
