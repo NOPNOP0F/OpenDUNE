@@ -8,15 +8,19 @@
  *               (+-8 pi, like the OPL's full-level modulator); additive
  *               channels instead send both slots to the output
  *   feedback    the modulator modulates itself, MDL = feedback + 4
- *   envelope    OPL rates 0-15 -> SCSP attack 2 * rate + 1, decay and
- *               release 2 * rate + 2 (matching the YM3812 datasheet times
- *               to SCSP times measured with saturn/tests/eg.c), key scale
- *               rate applied here; sustain level -> DL; non-sustaining
- *               operators keep decaying at the release rate (D2R)
- *   key off/on  key offs wait for the end of the driver tick. A key on in
- *               the same tick is a re-strike: the OPL then restarts the
- *               attack from the current level. With a fast attack that is
- *               a restart; with a slow one the note just goes on.
+ *   envelope    operators with a fast attack use the SCSP's envelope:
+ *               OPL rates 0-15 -> SCSP attack 2 * rate + 1, decay and
+ *               release 2 * rate + 2.25 (YM3812 datasheet times matched to
+ *               SCSP times measured with saturn/tests/eg.c; adjustable with
+ *               opl_scsp_tune()), key scale rate applied here, sustain
+ *               level -> DL, non-sustaining operators keep decaying (D2R).
+ *               The SCSP restarts every attack from a low level, the OPL
+ *               from the current one, which matters for slow attacks: those
+ *               operators get the OPL envelope computed here instead
+ *               (opl_scsp_update(), per millisecond), driving TL, with the
+ *               slot kept keyed on through the release
+ *   key off/on  key offs wait for the end of the driver tick, so a key off
+ *               and on in one tick restarts a hardware envelope cleanly
  *   level       total level and key scale level -> TL
  *   AM / VIB    the slot's LFO (triangle), at the OPL's rates and depths
  * Register values from the SCSP User's Manual; the OPL side follows the
@@ -46,10 +50,36 @@ static const uint8_t s_multiple2[16] = { 1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 
 static const uint8_t s_kslRom[16] = { 0, 32, 40, 45, 48, 51, 53, 55, 56, 58, 59, 60, 61, 62, 63, 64 };
 static const uint8_t s_kslShift[4] = { 8, 1, 2, 0 };
 
+enum {
+	SOFT_ATTACK_MAX = 10,       /* OPL attack rates up to this use a software envelope */
+	ATT_MAX = 511 << 16         /* silent, in OPL envelope units (0.1875 dB), 16.16 */
+};
+
+typedef enum { ENV_OFF, ENV_ATTACK, ENV_DECAY, ENV_SUSTAIN, ENV_DECAY2, ENV_RELEASE } EnvPhase;
+
+/* An operator; its envelope fields are used when it is computed here (soft). */
+typedef struct Operator {
+	uint8_t soft;               /* this note's envelope is computed here */
+	uint8_t slotOn;             /* the SCSP slot is keyed on */
+	uint8_t phase;              /* EnvPhase */
+	uint8_t sustainHold;        /* OPL EG type: hold at the sustain level */
+	uint8_t level;              /* TL from total level and key scale level */
+	uint8_t written;            /* TL last written */
+	int32_t att;                /* attenuation, 0 .. ATT_MAX */
+	int32_t sustain;            /* attenuation at the sustain level */
+	int32_t attackK;            /* fraction of att removed per ms, 16.16 */
+	int32_t decayStep;          /* att added per ms in decay */
+	int32_t releaseStep;        /* att added per ms in release */
+} Operator;
+
 static uint8_t s_regs[256];
 static int32_t s_wave[4] = { -1, -1, -1, -1 };  /* sound RAM offsets of the waveforms */
 static uint8_t s_keyOn[CHANNELS];       /* key on, as the driver last wrote it */
-static uint8_t s_pendingOff[CHANNELS];  /* keyed off this tick, not yet on the SCSP */
+static uint8_t s_pendingOff[CHANNELS];  /* keyed off this tick, not yet carried out */
+static Operator s_ops[CHANNELS][2];
+static uint64_t s_envTime;              /* us of the last software envelope step */
+static int s_attackOffset = 1;          /* SCSP attack = OPL effective rate / 2 + this */
+static int s_decayQuarters = 9;         /* SCSP decay = OPL effective rate / 2 + this / 4 */
 
 static int op_slot(int channel, int op) { return FIRST_SLOT + channel * 2 + op; }
 static uint8_t op_reg(int base, int channel, int op) { return s_regs[base + s_opOffset[channel] + op * 3]; }
@@ -117,22 +147,64 @@ static uint16_t op_pitch(int channel, int op)
 }
 
 /* SCSP rate for an OPL rate (0-15) with the channel's key scale offset:
- * with the OPL's effective rate e = 4 * rate + offset, attack e / 2 + 1,
- * decay and release e / 2 + 2.25 (both halve their time every 4 e). */
+ * with the OPL's effective rate e = 4 * rate + offset, attack
+ * e / 2 + s_attackOffset, decay and release e / 2 + s_decayQuarters / 4
+ * (times halve every 4 e on the OPL, every 2 rates on the SCSP). */
 static uint16_t scsp_rate(uint8_t rate, int rateOffset, int attack)
 {
 	int effective;
 	if (rate == 0) return 0;
 	effective = rate * 4 + rateOffset;      /* 4..63, as in the OPL */
 	if (effective >= 60) return 31;
-	effective = attack ? (effective + 2) / 2 : (2 * effective + 9) / 4;
+	effective = attack ? effective / 2 + s_attackOffset : (2 * effective + s_decayQuarters) / 4;
+	if (effective < 1) effective = 1;
 	return (uint16_t)(effective > 31 ? 31 : effective);
 }
 
-/* The OPL attack of the channel's carrier is (near) instant. */
-static int fast_attack(int channel)
+/* Time in us of a full OPL attack (from silence) or decay (to silence) at
+ * effective rate e (4..63): 2826.24 ms or 39280.64 ms at e = 4, halving
+ * every 4 (YM3812 datasheet). */
+static uint32_t opl_time_us(int effective, int attack)
 {
-	return (op_reg(0x60, channel, 1) >> 4) >= 12;
+	static const uint32_t fraction[4] = { 65536, 77936, 92682, 110218 };   /* 2^(n/4), 16.16 */
+	int x = (effective > 63 ? 63 : effective) - 4;
+	uint64_t divisor = (uint64_t)fraction[x % 4] << (x / 4);
+	return (uint32_t)(((attack ? 2826240ULL : 39280640ULL) << 16) / divisor);
+}
+
+/* Step per ms of a linear OPL decay (to silence) at OPL rate r. */
+static int32_t opl_decay_step(int rate, int rateOffset)
+{
+	if (rate == 0) return 0;
+	return (int32_t)(((uint64_t)ATT_MAX * 1000) / opl_time_us(rate * 4 + rateOffset, 0));
+}
+
+/* The OPL envelope rates of an operator, for its software envelope. */
+static void op_envelope_rates(int channel, int op, int rateOffset)
+{
+	Operator *o = &s_ops[channel][op];
+	uint8_t r60 = op_reg(0x60, channel, op);
+	uint8_t r80 = op_reg(0x80, channel, op);
+	int attack = r60 >> 4, sustainLevel = r80 >> 4;
+
+	o->attackK = 0;
+	if (attack != 0) {
+		int e = attack * 4 + rateOffset;
+		/* the attenuation falls exponentially: ln(511) = 6.24 time constants */
+		uint32_t tau = (e >= 60) ? 0 : opl_time_us(e, 1) / 624 * 100;
+		o->attackK = (tau <= 1000) ? 65536 : (int32_t)(65536ULL * 1000 / tau);
+	}
+	o->decayStep = opl_decay_step(r60 & 0xF, rateOffset);
+	o->releaseStep = opl_decay_step(r80 & 0xF, rateOffset);
+	o->sustain = ((sustainLevel == 15) ? 31 : sustainLevel) * (16 << 16);   /* 3 dB = 16 units */
+	if (o->sustain > ATT_MAX) o->sustain = ATT_MAX;
+	o->sustainHold = (op_reg(0x20, channel, op) & 0x20) != 0;
+}
+
+static uint8_t op_tl(const Operator *o)
+{
+	uint32_t tl = o->level + (uint32_t)(o->att >> 17);     /* 0.1875 dB units -> 0.375 dB */
+	return (uint8_t)(tl > 255 ? 255 : tl);
 }
 
 static void op_setup(int channel, int op)
@@ -153,8 +225,9 @@ static void op_setup(int channel, int op)
 	int keyScale = block * 2 + ((s_regs[0x08] & 0x40) ? (fnum >> 8) & 1 : (fnum >> 9) & 1);
 	int rateOffset = (r20 & 0x10) ? keyScale : keyScale >> 2;
 	int ksl = (s_kslRom[fnum >> 6] << 2) - ((8 - block) << 5);
+	Operator *o = &s_ops[channel][op];
 	uint32_t level;
-	uint16_t sustain, lfo = 0, modulation = 0;
+	uint16_t sustain, lfo = 0, modulation = 0, eg1, eg2;
 
 	/* level: total level in 0.75 dB, key scale level in 0.1875 dB */
 	if (ksl < 0) ksl = 0;
@@ -181,12 +254,25 @@ static void op_setup(int channel, int op)
 		modulation = (uint16_t)((0xC << 12) | (source << 6) | source);
 	}
 
+	o->level = (uint8_t)level;
+	if (o->soft) {
+		/* the SCSP holds full level; the envelope comes through TL */
+		op_envelope_rates(channel, op, rateOffset);
+		o->written = op_tl(o);
+		eg1 = 31;
+		eg2 = (uint16_t)((0xF << 10) | 31);
+		level = o->written;
+	} else {
+		eg1 = (uint16_t)((sustain << 11) | (scsp_rate(r60 & 0xF, rateOffset, 0) << 6) | scsp_rate(r60 >> 4, rateOffset, 1));
+		eg2 = (uint16_t)((0xF << 10) | (((r80 >> 4) == 15 ? 31 : (r80 >> 4)) << 5) | scsp_rate(r80 & 0xF, rateOffset, 0));
+	}
+
 	scsp_slot_write(slot, 0x00, (uint16_t)((scsp_slot_read(slot, 0x00) & (1 << 11)) | (1 << 5) | ((start >> 16) & 0xF)));
 	scsp_slot_write(slot, 0x02, (uint16_t)start);
 	scsp_slot_write(slot, 0x04, 0);
 	scsp_slot_write(slot, 0x06, WAVE_SAMPLES);
-	scsp_slot_write(slot, 0x08, (uint16_t)((sustain << 11) | (scsp_rate(r60 & 0xF, rateOffset, 0) << 6) | scsp_rate(r60 >> 4, rateOffset, 1)));
-	scsp_slot_write(slot, 0x0A, (uint16_t)((0xF << 10) | (((r80 >> 4) == 15 ? 31 : (r80 >> 4)) << 5) | scsp_rate(r80 & 0xF, rateOffset, 0)));
+	scsp_slot_write(slot, 0x08, eg1);
+	scsp_slot_write(slot, 0x0A, eg2);
 	scsp_slot_write(slot, 0x0C, (uint16_t)level);
 	scsp_slot_write(slot, 0x0E, modulation);
 	scsp_slot_write(slot, 0x10, op_pitch(channel, op));
@@ -195,26 +281,50 @@ static void op_setup(int channel, int op)
 	scsp_slot_write(slot, 0x16, (uint16_t)(sounding ? (MIX_LEVEL << 13) : 0));
 }
 
-static void slots_key(int channel, int on)
+static void op_key_on(int channel, int op)
 {
-	scsp_key(op_slot(channel, 0), on);
-	scsp_key(op_slot(channel, 1), on);
+	Operator *o = &s_ops[channel][op];
+	int slot = op_slot(channel, op);
+	int slow = (op_reg(0x60, channel, op) >> 4) <= SOFT_ATTACK_MAX;
+
+	if (slow) {
+		/* attack from the current level, as the OPL does; the slot stays
+		 * keyed on if it still is, so the SCSP doesn't restart its envelope */
+		if (!o->soft || !o->slotOn) o->att = ATT_MAX;
+		o->soft = 1;
+		o->phase = ENV_ATTACK;
+		op_setup(channel, op);
+		if (!o->slotOn) scsp_key(slot, 1);
+	} else {
+		o->soft = 0;
+		op_setup(channel, op);
+		if (o->slotOn) {
+			/* restart: leave the SCSP at least one sample (22.7 us) to see
+			 * the key off */
+			scsp_key(slot, 0);
+			saturn_delay_us(30);
+		}
+		scsp_key(slot, 1);
+	}
+	o->slotOn = 1;
+}
+
+static void op_key_off(int channel, int op)
+{
+	Operator *o = &s_ops[channel][op];
+	if (o->soft) {
+		o->phase = ENV_RELEASE;         /* opl_scsp_update() keys off when silent */
+	} else {
+		scsp_key(op_slot(channel, op), 0);
+		o->slotOn = 0;
+	}
 }
 
 static void channel_key_on(int channel)
 {
-	op_setup(channel, 0);
-	op_setup(channel, 1);
-
-	if (s_pendingOff[channel]) {
-		/* re-struck within the tick: the note never stopped on the SCSP */
-		s_pendingOff[channel] = 0;
-		if (!fast_attack(channel)) return;
-		slots_key(channel, 0);
-		/* leave the SCSP at least one sample (22.7 us) to see the key off */
-		saturn_delay_us(30);
-	}
-	slots_key(channel, 1);
+	s_pendingOff[channel] = 0;
+	op_key_on(channel, 0);
+	op_key_on(channel, 1);
 }
 
 void opl_scsp_flush(void)
@@ -223,18 +333,95 @@ void opl_scsp_flush(void)
 	for (channel = 0; channel < CHANNELS; channel++) {
 		if (!s_pendingOff[channel]) continue;
 		s_pendingOff[channel] = 0;
-		slots_key(channel, 0);
+		op_key_off(channel, 0);
+		op_key_off(channel, 1);
 	}
+}
+
+/* One millisecond of an OPL envelope. */
+static void op_envelope_step(Operator *o)
+{
+	switch (o->phase) {
+		case ENV_ATTACK:
+			o->att -= (int32_t)(((int64_t)o->att * o->attackK) >> 16);
+			if (o->att < (1 << 16)) {
+				o->att = 0;
+				o->phase = ENV_DECAY;
+			}
+			break;
+		case ENV_DECAY:
+			o->att += o->decayStep;
+			if (o->att >= o->sustain) {
+				o->att = o->sustain;
+				o->phase = o->sustainHold ? ENV_SUSTAIN : ENV_DECAY2;
+			}
+			break;
+		case ENV_DECAY2:
+		case ENV_RELEASE:
+			o->att += o->releaseStep;
+			if (o->att >= ATT_MAX) {
+				o->att = ATT_MAX;
+				if (o->phase == ENV_RELEASE) o->phase = ENV_OFF;
+			}
+			break;
+		default:
+			break;
+	}
+}
+
+void opl_scsp_update(void)
+{
+	uint64_t now = saturn_timer_us();
+	uint32_t steps = (uint32_t)((now - s_envTime) / 1000);
+	int channel, op;
+
+	if (steps == 0) return;
+	s_envTime += (uint64_t)steps * 1000;
+	if (steps > 200) steps = 200;       /* after a long pause, don't spin */
+
+	for (channel = 0; channel < CHANNELS; channel++) {
+		for (op = 0; op < 2; op++) {
+			Operator *o = &s_ops[channel][op];
+			uint32_t i;
+			uint8_t tl;
+
+			if (!o->soft || !o->slotOn) continue;
+			for (i = 0; i < steps && o->phase != ENV_OFF; i++) op_envelope_step(o);
+
+			if (o->phase == ENV_OFF) {
+				scsp_key(op_slot(channel, op), 0);
+				o->slotOn = 0;
+				continue;
+			}
+			tl = op_tl(o);
+			if (tl != o->written) {
+				o->written = tl;
+				scsp_slot_write(op_slot(channel, op), 0x0C, tl);
+			}
+		}
+	}
+}
+
+void opl_scsp_tune(int attackOffset, int decayQuarters)
+{
+	s_attackOffset = attackOffset;
+	s_decayQuarters = decayQuarters;
 }
 
 void opl_scsp_reset(void)
 {
-	int channel;
+	int channel, op;
 	for (channel = 0; channel < CHANNELS; channel++) {
-		slots_key(channel, 0);
+		for (op = 0; op < 2; op++) {
+			scsp_key(op_slot(channel, op), 0);
+			s_ops[channel][op].slotOn = 0;
+			s_ops[channel][op].soft = 0;
+			s_ops[channel][op].phase = ENV_OFF;
+		}
 		s_keyOn[channel] = 0;
 		s_pendingOff[channel] = 0;
 	}
+	s_envTime = saturn_timer_us();
 }
 
 int opl_scsp_init(void)

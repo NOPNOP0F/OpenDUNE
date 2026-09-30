@@ -17,6 +17,15 @@ extern void opl_scsp_write(uint8_t reg, uint8_t val);
 /* End of a driver tick: carry out its key offs (see opl_scsp.c). */
 extern void opl_scsp_flush(void);
 
+/* Run the software envelopes (slow attacks); call as often as possible,
+ * at least every few milliseconds. */
+extern void opl_scsp_update(void);
+
+/* Envelope mapping for tuning by ear: SCSP attack rate = OPL effective
+ * rate / 2 + attackOffset (default 1), decay/release = OPL effective
+ * rate / 2 + decayQuarters / 4 (default 9). */
+extern void opl_scsp_tune(int attackOffset, int decayQuarters);
+
 /* Silence all OPL voices. */
 extern void opl_scsp_reset(void);
 
