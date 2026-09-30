@@ -31,6 +31,7 @@ enum {
 	SECTOR_SIZE = 2048,
 	CACHE_SECTORS = 16,
 	RAM_FILE_MAX = 16,
+	RAM_FILE_SIZE_MAX = 512 * 1024,
 	NAME_MAX_LENGTH = 15
 };
 
@@ -42,6 +43,7 @@ typedef struct RamFile {
 	int opens;          /* file descriptors on it */
 	bool changed;       /* since it was read from backup memory */
 	bool stored;        /* in backup memory as it is */
+	bool deleted;       /* unlinked while open: gone once closed */
 } RamFile;
 
 typedef enum { FD_FREE, FD_CD, FD_RAM } FdKind;
@@ -138,7 +140,7 @@ static RamFile *ram_find(const char *path)
 	int i;
 	upper_name(name, base_name(path), sizeof(name));
 	for (i = 0; i < RAM_FILE_MAX; i++) {
-		if (s_ramFiles[i].name[0] != '\0' && strcmp(s_ramFiles[i].name, name) == 0) return &s_ramFiles[i];
+		if (s_ramFiles[i].name[0] != '\0' && !s_ramFiles[i].deleted && strcmp(s_ramFiles[i].name, name) == 0) return &s_ramFiles[i];
 	}
 	return NULL;
 }
@@ -316,11 +318,11 @@ int _close(int fd)
 		GFS_Close(f->gfs);
 	} else {
 		RamFile *r = f->ram;
-		bool ok = !r->changed || ram_store(r);
+		bool ok = r->deleted || !r->changed || ram_store(r);
 
 		f->kind = FD_FREE;
 		r->opens--;
-		if (r->opens == 0 && (r->stored || !ok)) {
+		if (r->opens == 0 && (r->stored || r->deleted || !ok)) {
 			/* stored: backup memory has it; not stored: it didn't fit, and
 			 * shouldn't look saved */
 			ram_free(r);
@@ -405,6 +407,10 @@ int files_write(int fd, const void *buffer, size_t length)
 	}
 	r = f->ram;
 	if (f->flags & O_APPEND) f->position = r->size;
+	if (f->position > RAM_FILE_SIZE_MAX || length > RAM_FILE_SIZE_MAX - f->position) {
+		errno = EFBIG;
+		return -1;
+	}
 	if (f->position + length > r->capacity) {
 		uint32_t capacity = (uint32_t)(f->position + length + 1023) & ~1023u;
 		uint8_t *data = realloc(r->data, capacity);
@@ -510,7 +516,11 @@ int _unlink(const char *path)
 		return -1;
 	}
 	r = ram_find(path);
-	if (r != NULL) ram_free(r);
+	if (r != NULL) {
+		/* descriptors still open keep it until they are closed */
+		if (r->opens > 0) r->deleted = true;
+		else ram_free(r);
+	}
 	backup_name(path, name);
 	backup_delete(name);
 	return 0;
