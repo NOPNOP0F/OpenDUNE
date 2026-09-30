@@ -868,6 +868,13 @@ static bool GUI_Widget_Savegame_Click(uint16 index)
 
 	if (*saveDesc == '[') *saveDesc = 0;
 
+#if defined(SATURN)
+	/* the pad has no keys to type a name: start from one saying what it is */
+	if (*saveDesc == 0 && g_playerHouseID < HOUSE_MAX) {
+		snprintf(saveDesc, 50, "%s, mission %u", g_table_houseInfo[g_playerHouseID].name, (unsigned int)g_campaignID + 1);
+	}
+#endif
+
 	GUI_Window_BackupScreen(desc);
 
 	GUI_Window_Create(desc);
@@ -902,7 +909,11 @@ static bool GUI_Widget_Savegame_Click(uint16 index)
 			case 0x1E:	/* RETURN / Save Button */
 				if (*saveDesc == 0) break;
 
-				SaveGame_SaveFile(GenerateSavegameFilename(s_savegameIndexBase - index), saveDesc);
+				if (!SaveGame_SaveFile(GenerateSavegameFilename(s_savegameIndexBase - index), saveDesc)) {
+#if defined(SATURN)
+					GUI_DisplayModalMessage("There is not enough room in backup memory to save the game.", 0xFFFF);
+#endif
+				}
 				loop = false;
 				ret = true;
 				break;
