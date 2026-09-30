@@ -597,15 +597,26 @@ static bool PadSaturn_Focusable(const Widget *w)
 	return true;
 }
 
+static Widget *s_focus = NULL;          /* the focused widget */
+
 /* Move the focus in a direction, or to the button nearest the cursor for
- * NO_DIRECTION; returns false if the screen has nothing to focus. */
-static bool PadSaturn_MoveFocus(Widget *list, uint16 direction)
+ * NO_DIRECTION: returns the widget focused then (the same one if there is
+ * none that way), or NULL if the screen has nothing to focus. */
+static Widget *PadSaturn_MoveFocus(Widget *list, uint16 direction)
 {
 	static const int dirX[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
 	static const int dirY[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
 	Widget *w, *best = NULL;
 	long bestScore = 0;
 	bool any = false;
+	int fromX = s_x, fromY = s_y;
+
+	/* a move goes from the focused widget, wherever the cursor is */
+	if (direction != NO_DIRECTION && s_focus != NULL) {
+		PadSaturn_WidgetPosition(s_focus, &fromX, &fromY);
+		fromX += s_focus->width / 2;
+		fromY += s_focus->height / 2;
+	}
 
 	for (w = list; w != NULL; w = GUI_Widget_GetNext(w)) {
 		int x, y, dx, dy;
@@ -613,9 +624,10 @@ static bool PadSaturn_MoveFocus(Widget *list, uint16 direction)
 
 		if (!PadSaturn_Focusable(w)) continue;
 		any = true;
+		if (w == s_focus && direction != NO_DIRECTION) continue;
 		PadSaturn_WidgetPosition(w, &x, &y);
-		dx = x + w->width / 2 - s_x;
-		dy = y + w->height / 2 - s_y;
+		dx = x + w->width / 2 - fromX;
+		dy = y + w->height / 2 - fromY;
 
 		if (direction == NO_DIRECTION) {
 			score = (long)dx * dx + (long)dy * dy;
@@ -631,32 +643,32 @@ static bool PadSaturn_MoveFocus(Widget *list, uint16 direction)
 			bestScore = score;
 		}
 	}
-	if (best != NULL) {
+	if (!any) return NULL;
+	if (best == NULL) return s_focus;       /* nothing that way */
+	{
 		int x, y;
 		PadSaturn_WidgetPosition(best, &x, &y);
 		PadSaturn_SetPosition((uint16)(x + best->width / 2), (uint16)(y + best->height / 2));
 	}
-	return any;
+	return best;
 }
 
-/* The widget under the cursor the focus can go to, or NULL. */
-static Widget *PadSaturn_Focused(Widget *list)
+/* Whether w is a widget of list the focus can go to. */
+static bool PadSaturn_InList(Widget *list, Widget *w)
 {
-	Widget *w;
+	Widget *i;
 
-	for (w = list; w != NULL; w = GUI_Widget_GetNext(w)) {
-		int x, y;
-		if (!PadSaturn_Focusable(w)) continue;
-		PadSaturn_WidgetPosition(w, &x, &y);
-		if (s_x >= x && s_x < x + w->width && s_y >= y && s_y < y + w->height) return w;
+	if (w == NULL) return false;
+	for (i = list; i != NULL; i = GUI_Widget_GetNext(i)) {
+		if (i == w) return PadSaturn_Focusable(w);
 	}
-	return NULL;
+	return false;
 }
 
 /* Put the reticle on the focused widget. */
-static void PadSaturn_ReticleOnFocus(Widget *list)
+static void PadSaturn_ReticleOnFocus(void)
 {
-	Widget *w = PadSaturn_Focused(list);
+	Widget *w = s_focus;
 	int x, y;
 
 	/* list lines (the Mentat's subjects) change colour instead */
@@ -761,16 +773,18 @@ void PadSaturn_HandleEvents(Widget *list)
 	}
 	s_stickX = s_stickY = 0;
 
-	if (list != lastList || PadSaturn_Focused(list) == NULL) {
-		s_focusActive = PadSaturn_MoveFocus(list, NO_DIRECTION);
+	/* a new screen, or the focused widget gone: the nearest one */
+	if (list != lastList || !PadSaturn_InList(list, s_focus)) {
+		s_focus = PadSaturn_MoveFocus(list, NO_DIRECTION);
 		lastList = list;
 	}
-	if (direction != NO_DIRECTION) {
-		Widget *before = PadSaturn_Focused(list);
-		s_focusActive = PadSaturn_MoveFocus(list, direction);
-		if (PadSaturn_Focused(list) != before) PadSaturn_Blip();
+	if (direction != NO_DIRECTION && s_focus != NULL) {
+		Widget *next = PadSaturn_MoveFocus(list, direction);
+		if (next != s_focus) PadSaturn_Blip();
+		s_focus = next;
 	}
-	PadSaturn_ReticleOnFocus(list);
+	s_focusActive = s_focus != NULL;
+	PadSaturn_ReticleOnFocus();
 }
 
 void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeight, uint16 lines, uint16 current)
