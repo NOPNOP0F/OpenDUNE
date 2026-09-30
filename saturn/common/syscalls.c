@@ -1,8 +1,8 @@
 /** @file saturn/common/syscalls.c System calls for newlib on the Saturn.
  *
  * stdout/stderr go to the text console; files are in files.c. The heap is
- * high work RAM after the program (minus the stack), then the 1 MB of low
- * work RAM. The clock counts from power on. */
+ * the 1 MB of low work RAM, then high work RAM after the program (minus the
+ * stack). The clock counts from power on. */
 
 #include <errno.h>
 #include <stdint.h>
@@ -27,6 +27,7 @@ enum { STACK_RESERVE = 64 * 1024 };
 #define LWRAM_END   0x00300000UL
 
 static uintptr_t s_break = 0;
+static uintptr_t s_regionStart = 0;
 static uintptr_t s_regionEnd = 0;
 
 void *_sbrk(ptrdiff_t increment)
@@ -34,19 +35,28 @@ void *_sbrk(ptrdiff_t increment)
 	uintptr_t previous;
 
 	if (s_break == 0) {
-		s_break = (uintptr_t)s_heapStart;
-		s_regionEnd = (uintptr_t)s_stackTop - STACK_RESERVE;
+		s_break = s_regionStart = LWRAM_START;
+		s_regionEnd = LWRAM_END;
+	}
+
+	if (increment < 0 && s_break + increment < s_regionStart) {
+		errno = EINVAL;
+		return (void *)-1;
 	}
 
 	if (s_break + increment > s_regionEnd) {
-		/* high work RAM is full: continue in low work RAM. malloc copes
-		 * with the break jumping, it just can't merge across the gap. */
-		if (s_regionEnd == LWRAM_END || LWRAM_START + increment > LWRAM_END) {
+		/* low work RAM is full: continue in high work RAM. newlib's malloc
+		 * takes the break jumping up (it fences off the gap) but not down,
+		 * so low work RAM, the lower address, has to come first. */
+		uintptr_t start = (uintptr_t)s_heapStart;
+		uintptr_t end = (uintptr_t)s_stackTop - STACK_RESERVE;
+
+		if (s_regionStart == start || start + increment > end) {
 			errno = ENOMEM;
 			return (void *)-1;
 		}
-		s_break = LWRAM_START;
-		s_regionEnd = LWRAM_END;
+		s_break = s_regionStart = start;
+		s_regionEnd = end;
 	}
 
 	previous = s_break;
