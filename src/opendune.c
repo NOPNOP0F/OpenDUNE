@@ -437,6 +437,10 @@ static uint16 GameLoop_HandleEvents(const char **strings)
 	fgColourNormal = props->fgColourNormal;
 	fgColourSelected = props->fgColourSelected;
 
+#if defined(SATURN)
+	PadSaturn_HandleMenu(minX, minY, maxX, lineHeight, last + 1, current);
+#endif
+
 	key = 0;
 	if (Input_IsInputAvailable() != 0) {
 		key = Input_Wait() & 0x8FF;

@@ -652,6 +652,43 @@ void PadSaturn_HandleEvents(Widget *list)
 	if (direction != NO_DIRECTION) s_focusActive = PadSaturn_MoveFocus(list, direction);
 }
 
+void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeight, uint16 lines, uint16 current)
+{
+	static uint16 lastTop = 0xFFFF;
+	uint16 direction;
+	int line;
+	uint32 sr;
+
+	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
+	s_handledFrame = saturn_timer_frames();
+	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE || lines == 0) {
+		s_focusActive = false;
+		return;
+	}
+
+	sr = cpu_interrupts_disable();
+	direction = s_navigate;
+	s_navigate = NO_DIRECTION;
+	s_toggleCamera = false;
+	cpu_interrupts_restore(sr);
+	s_focusActive = true;
+	s_cameraActive = false;
+
+	/* the line the cursor is on, or the menu's own choice when it's elsewhere */
+	if (top != lastTop || s_x < left || s_x > right || s_y < top || s_y >= top + lines * lineHeight) {
+		line = current;
+		lastTop = top;
+	} else {
+		line = (s_y - top) / lineHeight;
+	}
+	if (direction == 0) line = (line == 0) ? lines - 1 : line - 1;
+	if (direction == 4) line = (line == lines - 1) ? 0 : line + 1;
+
+	if (s_x != (left + right) / 2 || s_y != top + line * lineHeight + lineHeight / 2) {
+		PadSaturn_SetPosition((left + right) / 2, (uint16)(top + line * lineHeight + lineHeight / 2));
+	}
+}
+
 /* The next of the player's objects after index (wrapping round), or NULL. */
 static Object *PadSaturn_NextObject(bool structures, uint16 index)
 {

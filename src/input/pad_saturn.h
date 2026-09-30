@@ -16,6 +16,10 @@ struct Widget;
  * widgets of the screen on show. */
 extern void PadSaturn_HandleEvents(struct Widget *list);
 
+/* The same for the text menus of GameLoop_HandleEvents() (main menu): the
+ * focus moves between the lines, from left, top to right, of lineHeight. */
+extern void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeight, uint16 lines, uint16 current);
+
 /* Whether any controller is connected. */
 extern bool PadSaturn_Connected(void);
 extern void PadSaturn_SetPosition(uint16 x, uint16 y);
