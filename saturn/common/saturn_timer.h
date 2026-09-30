@@ -18,8 +18,7 @@ extern uint32_t saturn_timer_ms(void);
  * since the last VBlank, from the free-running timer. */
 extern uint64_t saturn_timer_us(void);
 
-/* Busy-wait at least us microseconds (at most 18000), timed by the SH-2
- * free-running timer. */
+/* Busy-wait at least us microseconds, timed by the SH-2 free-running timer. */
 extern void saturn_delay_us(uint32_t us);
 
 /* Also run hook in every VBlank-in interrupt (NULL to stop). Keep it short. */

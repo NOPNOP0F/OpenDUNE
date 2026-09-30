@@ -50,11 +50,18 @@ static uint16_t frt_read(void)
 
 void saturn_delay_us(uint32_t us)
 {
-	/* 26.8 MHz / 8 (NTSC 320 dots; PAL is close): about 3.36 counts per us,
-	 * rounded up so the wait is never shorter */
-	uint32_t counts = us * 7 / 2 + 1;
-	uint16_t start = frt_read();
-	while ((uint16_t)(frt_read() - start) < counts) {}
+	/* the 16-bit counter wraps after about 18 ms: wait in pieces */
+	while (us > 10000) {
+		saturn_delay_us(10000);
+		us -= 10000;
+	}
+	{
+		/* 26.8 MHz / 8 (NTSC 320 dots; PAL is close): about 3.36 counts
+		 * per us, rounded up so the wait is never shorter */
+		uint32_t counts = us * 7 / 2 + 1;
+		uint16_t start = frt_read();
+		while ((uint16_t)(frt_read() - start) < counts) {}
+	}
 }
 
 uint64_t saturn_timer_us(void)
