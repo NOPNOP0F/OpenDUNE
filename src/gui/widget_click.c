@@ -31,6 +31,9 @@
 #include "../string.h"
 #include "../structure.h"
 #include "../table/strings.h"
+#if defined(SATURN)
+#include "../input/pad_saturn.h"
+#endif
 #include "../tile.h"
 #include "../timer.h"
 #include "../unit.h"
@@ -691,6 +694,80 @@ static bool GUI_YesNo(uint16 stringID)
 
 	return ret;
 }
+#if defined(SATURN)
+char g_saturnWindowStrings[3][52];      /* strings -20 to -22, see GUI_String_Get_ByIndex() */
+
+static WindowDesc s_backupWindowDesc = {
+	/* index       */ 18,
+	/* stringID    */ -20,
+	/* addArrows   */ false,
+	/* widgetCount */ 2,
+	{ /* widgets */
+		{ (uint16)-21,   8, 30, 72, 15, STR_NULL, 0 },
+		{ (uint16)-22, 224, 30, 72, 15, STR_NULL, 0 },
+		{ STR_NULL,      0,  0,  0,  0, STR_NULL, 0 },
+	}
+};
+
+/* Draw the window of s_backupWindowDesc, with a line under its title. */
+static void GUI_Saturn_BackupWindow(const char *line)
+{
+	Screen oldScreenID;
+
+	GUI_Window_Create(&s_backupWindowDesc);
+	oldScreenID = GFX_Screen_SetActive(SCREEN_0);
+	GUI_Mouse_Hide_Safe();
+	GUI_DrawText_Wrapper(line, (g_curWidgetXBase << 3) + (g_curWidgetWidth << 2), g_curWidgetYBase + 18, 232, 0, 0x122);
+	GUI_Mouse_Show_Safe();
+	GFX_Screen_SetActive(oldScreenID);
+}
+
+/**
+ * Ask where to keep saved games and settings, when a backup cartridge is
+ * connected. While no controller is connected, the window says so.
+ * @param internalFree Free bytes in the Saturn's own memory.
+ * @param cartridgeFree Free bytes on the cartridge.
+ * @return 0 for the Saturn's own memory, 1 for the cartridge.
+ */
+int GUI_Saturn_AskBackupDevice(int32 internalFree, int32 cartridgeFree)
+{
+	char freeLine[64];
+	int choice = -1;
+	bool connected = !PadSaturn_Connected();   /* so the window is drawn at once */
+
+	snprintf(g_saturnWindowStrings[0], sizeof(g_saturnWindowStrings[0]), "Where should games and settings be saved?");
+	snprintf(g_saturnWindowStrings[1], sizeof(g_saturnWindowStrings[1]), "Onboard RAM");
+	snprintf(g_saturnWindowStrings[2], sizeof(g_saturnWindowStrings[2]), "Cartridge");
+	snprintf(freeLine, sizeof(freeLine), "Onboard RAM: %ld KB free.  Cartridge: %ld KB free.",
+		(long)(internalFree < 0 ? 0 : internalFree / 1024), (long)(cartridgeFree < 0 ? 0 : cartridgeFree / 1024));
+
+	GUI_Window_BackupScreen(&s_backupWindowDesc);
+	PadSaturn_ShowControllerMessage(false);
+
+	while (choice < 0) {
+		uint16 key;
+
+		if (PadSaturn_Connected() != connected) {
+			connected = !connected;
+			GUI_Saturn_BackupWindow(connected ? freeLine : "No controller: connect one to port 1 or 2.");
+		}
+
+		key = GUI_Widget_HandleEvents(g_widgetLinkedListTail);
+		if ((key & 0x8000) != 0) {
+			if ((key & 0x7FFF) == 0x1E) choice = 0;
+			if ((key & 0x7FFF) == 0x1F) choice = 1;
+		}
+
+		GUI_PaletteAnimate();
+		sleepIdle();
+	}
+
+	PadSaturn_ShowControllerMessage(true);
+	GUI_Window_RestoreScreen(&s_backupWindowDesc);
+	return choice;
+}
+#endif
+
 /**
  * Handles Click event for "Options" button.
  *

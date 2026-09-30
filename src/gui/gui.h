@@ -160,6 +160,10 @@ extern void GUI_DrawText(const char *string, int16 left, int16 top, uint8 fgColo
 extern void GUI_DrawText_Wrapper(const char *string, int16 left, int16 top, uint8 fgColour, uint8 bgColour, int flags, ...);
 extern uint16 GUI_DisplayModalMessage(const char *str, unsigned int stringID, ...);
 #if defined(SATURN)
+/* Ask where to keep saved games and settings: 0 the Saturn's own memory,
+ * 1 the cartridge (free bytes given for each). */
+extern int GUI_Saturn_AskBackupDevice(int32 internalFree, int32 cartridgeFree);
+
 /* If set, GUI_DisplayModalMessage() keeps the message up until it returns
  * true, instead of until a key is pressed. */
 extern bool (*g_modalMessageUntil)(void);

@@ -128,6 +128,7 @@ static int s_lTapFrames = -1;           /* frames L has been held, -1: not a tap
 static int s_cTapFrames = -1;           /* the same for C */
 static bool s_keySpace, s_keyTab;       /* keyboard keys working as A and C */
 static int s_missingFrames = 0;
+static bool s_controllerMessage = true;     /* pause with a message when none */
 
 /* requests from Video_Tick for PadSaturn_HandleEvents() and the game loop */
 static volatile uint16 s_navigate = NO_DIRECTION;   /* move the focus */
@@ -477,6 +478,11 @@ bool PadSaturn_Connected(void)
 	return s_controller != CONTROLLER_NONE;
 }
 
+void PadSaturn_ShowControllerMessage(bool show)
+{
+	s_controllerMessage = show;
+}
+
 /* Where a widget is on the screen (as GUI_Widget_HandleEvents() works it out). */
 static void PadSaturn_WidgetPosition(const Widget *w, int *x, int *y)
 {
@@ -590,7 +596,7 @@ static void PadSaturn_WaitForController(void)
 	static bool waiting = false;
 	bool gameTimer;
 
-	if (waiting) return;
+	if (waiting || !s_controllerMessage) return;
 	waiting = true;
 	gameTimer = Timer_SetTimer(TIMER_GAME, false);
 	g_modalMessageUntil = &PadSaturn_Connected;

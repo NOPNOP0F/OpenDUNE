@@ -22,6 +22,10 @@ extern void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 l
 
 /* Whether any controller is connected. */
 extern bool PadSaturn_Connected(void);
+
+/* Whether to pause with a message while no controller is connected (off
+ * while a window says so itself). */
+extern void PadSaturn_ShowControllerMessage(bool show);
 extern void PadSaturn_SetPosition(uint16 x, uint16 y);
 extern void PadSaturn_SetRegion(uint16 minX, uint16 maxX, uint16 minY, uint16 maxY);
 

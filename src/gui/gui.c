@@ -2964,6 +2964,13 @@ char *GUI_String_Get_ByIndex(int16 stringID)
 			return s;
 		}
 
+#if defined(SATURN)
+		case -22: case -21: case -20: {
+			extern char g_saturnWindowStrings[3][52];
+			return g_saturnWindowStrings[-20 - stringID];
+		}
+#endif
+
 		case -10:
 			stringID = (g_gameConfig.music != 0) ? STR_ON : STR_OFF;
 			break;

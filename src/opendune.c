@@ -990,6 +990,12 @@ static void GameLoop_Main(void)
 	}
 
 	Window_WidgetClick_Create();
+#if defined(SATURN)
+	/* before the first file in backup memory: where to keep them */
+	if (backup_has_cartridge()) {
+		backup_select(GUI_Saturn_AskBackupDevice(backup_free(BACKUP_INTERNAL), backup_free(BACKUP_CARTRIDGE)) ? BACKUP_CARTRIDGE : BACKUP_INTERNAL);
+	}
+#endif
 	GameOptions_Load();
 	Unit_Init();
 	Team_Init();
@@ -1312,9 +1318,6 @@ int main(int argc, char **argv)
 	if(g_outlog != NULL) setvbuf(g_outlog, NULL, _IOLBF, 0);
 #endif
 #endif /* DOS */
-#if defined(SATURN)
-	backup_choose();
-#endif
 	CrashLog_Init();
 
 	VARIABLE_NOT_USED(argc);

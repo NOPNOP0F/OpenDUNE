@@ -19,10 +19,8 @@ enum {
 /* Whether a backup cartridge is connected. */
 extern int backup_has_cartridge(void);
 
-/* If a backup cartridge is connected, ask on the console (with the pad)
- * whether to use it or the Saturn's own memory. Call before anything uses
- * backup memory, while no VBlank handler reads the pad. */
-extern void backup_choose(void);
+/* Free bytes on a device, or -1 if it isn't there. */
+extern int32_t backup_free(int device);
 
 /* Use this device from now on (BACKUP_INTERNAL by default). */
 extern void backup_select(int device);
