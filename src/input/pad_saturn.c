@@ -770,6 +770,12 @@ static void PadSaturn_Camera(void)
 /* A new screen: forget what was pressed for the one before. */
 static void PadSaturn_NewScreen(void)
 {
+	/* let go of the button now, before forgetting: a release coming later
+	 * would finish a click on the new screen's focused button */
+	if (s_previous & PAD_A) {
+		Mouse_EventHandler((uint16)s_x, (uint16)s_y, false, false);
+		s_previous &= ~PAD_A;
+	}
 	Input_History_Clear();
 	s_blockA = true;
 	s_pressA = false;
