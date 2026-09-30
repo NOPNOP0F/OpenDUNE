@@ -16,6 +16,9 @@ extern void *DSP_Saturn_KeepVoc(void *voc, uint32 *size);
 extern void DSP_Saturn_FreeVoc(void *data);
 /* Whether a VOC file of this size can be kept in sound RAM now. */
 extern bool DSP_Saturn_CanKeep(uint32 fileSize);
+/* A short blip, for moving the focus with a pad; plays alongside voices,
+ * music and sound effects. */
+extern void DSP_Saturn_Blip(void);
 /* Whether data (from DSP_Saturn_KeepVoc) is the voice playing. */
 extern bool DSP_Saturn_IsPlaying(const void *data);
 #endif

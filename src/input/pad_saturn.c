@@ -49,7 +49,8 @@
 #include "mouse.h"
 #include "pad_saturn.h"
 #include "../gfx.h"
-#include "../audio/driver.h"
+#include "../audio/dsp.h"
+#include "../config.h"
 #include "../gui/gui.h"
 #include "../gui/mentat.h"
 #include "../gui/widget.h"
@@ -86,7 +87,7 @@ enum {
 	CAMERA_Y = 40 + 5 * 16 + 8,
 	/* the 320x200 picture is centred in the 224 lines shown (video_saturn.c) */
 	OVERLAY_TOP = (VDP2_DISPLAY_H - SCREEN_HEIGHT) / 2,
-	SOUND_FOCUS = 38,           /* the blip of the end of mission score counters */
+
 	NO_DIRECTION = 0xFFFF
 };
 
@@ -437,6 +438,13 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 	}
 }
 
+/* The sound of moving the focus: its own, as the game's effects depend on
+ * the music loaded (the menus' has none that fits). */
+static void PadSaturn_Blip(void)
+{
+	if (g_gameConfig.sounds != 0) DSP_Saturn_Blip();
+}
+
 /* Brackets round the corners of a rectangle, with a dark edge outside. */
 static void PadSaturn_Brackets(int x, int y, int w, int h, int light, int dark)
 {
@@ -760,7 +768,7 @@ void PadSaturn_HandleEvents(Widget *list)
 	if (direction != NO_DIRECTION) {
 		Widget *before = PadSaturn_Focused(list);
 		s_focusActive = PadSaturn_MoveFocus(list, direction);
-		if (PadSaturn_Focused(list) != before) Driver_Sound_Play(SOUND_FOCUS, 0xFF);
+		if (PadSaturn_Focused(list) != before) PadSaturn_Blip();
 	}
 	PadSaturn_ReticleOnFocus(list);
 }
@@ -797,7 +805,7 @@ void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeig
 	}
 	if (direction == 0) line = (line == 0) ? lines - 1 : line - 1;
 	if (direction == 4) line = (line == lines - 1) ? 0 : line + 1;
-	if (direction == 0 || direction == 4) Driver_Sound_Play(SOUND_FOCUS, 0xFF);
+	if (direction == 0 || direction == 4) PadSaturn_Blip();
 
 	if (s_x != (left + right) / 2 || s_y != top + line * lineHeight + lineHeight / 2) {
 		PadSaturn_SetPosition((left + right) / 2, (uint16)(top + line * lineHeight + lineHeight / 2));
@@ -857,7 +865,7 @@ int PadSaturn_PickRegion(const int16 *x, const int16 *y, const bool *usable, int
 		}
 		if (best >= 0) {
 			focus = best;
-			Driver_Sound_Play(SOUND_FOCUS, 0xFF);
+			PadSaturn_Blip();
 		}
 	}
 

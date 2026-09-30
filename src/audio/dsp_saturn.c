@@ -20,6 +20,8 @@
 
 enum {
 	VOICE_SLOT = 0,
+	BLIP_SLOT = 31,             /* free: voices use 0, the AdLib music 1-18 */
+	BLIP_SAMPLES = 32,          /* one cycle of a sine */
 	SCRATCH_SIZE = 32 * 1024,   /* g_readBuffer is at most 28000 bytes */
 	SCRATCH_MAX = SCRATCH_SIZE - SCSP_TAIL,
 	DESCRIPTOR_MAGIC = 0x534E4431   /* "SND1" */
@@ -37,6 +39,7 @@ static bool s_ready = false;
 static int32 s_scratch = -1;
 static uint64_t s_endUs = 0;    /* time (saturn_timer_us()) the playing voice ends */
 static int32 s_playing = -1;    /* sound RAM offset of the voice on the slot, playing or done */
+static int32 s_blip = -1;       /* the blip's wave in sound RAM */
 
 /* Find the PCM data of a VOC: first block, type 1, 8-bit unsigned. */
 static bool DSP_ParseVoc(const uint8 *data, const uint8 **pcm, uint32 *length, uint32 *rate)
@@ -58,6 +61,16 @@ bool DSP_Init(void)
 	scsp_init();
 	s_scratch = scsp_alloc(SCRATCH_SIZE);
 	s_ready = (s_scratch >= 0);
+
+	/* the blip: a cycle of a sine, played round and round */
+	s_blip = scsp_alloc(BLIP_SAMPLES);
+	if (s_blip >= 0) {
+		static const uint8 sine[BLIP_SAMPLES] = {
+			128, 153, 177, 199, 218, 234, 245, 252, 255, 252, 245, 234, 218, 199, 177, 153,
+			128, 103, 79, 57, 38, 22, 11, 4, 1, 4, 11, 22, 38, 57, 79, 103
+		};
+		scsp_upload_u8(s_blip, sine, BLIP_SAMPLES);
+	}
 	return s_ready;
 }
 
@@ -106,6 +119,28 @@ void DSP_Play(const uint8 *data)
 uint8 DSP_GetStatus(void)
 {
 	return (s_endUs != 0 && saturn_timer_us() < s_endUs) ? 2 : 0;
+}
+
+void DSP_Saturn_Blip(void)
+{
+	ScspNote note;
+
+	if (s_blip < 0) return;
+	/* about 1.4 kHz (32 samples a cycle at 44.8 kHz), dying away in some
+	 * 130 ms like the game's own blip (effect 38) */
+	note.offset = s_blip;
+	note.loopStart = 0;
+	note.end = BLIP_SAMPLES - 1;
+	note.loop = 1;
+	note.attack = 31;
+	note.decay1 = 21;
+	note.decayLevel = 31;
+	note.decay2 = 21;
+	note.release = 31;
+	note.level = 0x28;
+	note.pitch = scsp_pitch(0, 16);
+	note.pan = 0;
+	scsp_note_on(BLIP_SLOT, &note);
 }
 
 void *DSP_Saturn_KeepVoc(void *voc, uint32 *size)
