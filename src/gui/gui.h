@@ -159,6 +159,11 @@ extern void GUI_DisplayText(const char *str, int importance, ...);
 extern void GUI_DrawText(const char *string, int16 left, int16 top, uint8 fgColour, uint8 bgColour);
 extern void GUI_DrawText_Wrapper(const char *string, int16 left, int16 top, uint8 fgColour, uint8 bgColour, int flags, ...);
 extern uint16 GUI_DisplayModalMessage(const char *str, unsigned int stringID, ...);
+#if defined(SATURN)
+/* If set, GUI_DisplayModalMessage() keeps the message up until it returns
+ * true, instead of until a key is pressed. */
+extern bool (*g_modalMessageUntil)(void);
+#endif
 extern uint16 GUI_DisplayHint(uint16 stringID, uint16 spriteID);
 
 extern void GUI_UpdateProductionStringID(void);

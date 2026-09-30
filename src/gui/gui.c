@@ -775,6 +775,10 @@ static void GUI_Widget_SetProperties(uint16 index, uint16 xpos, uint16 ypos, uin
  * @param ... The args for the text.
  * @return ??
  */
+#if defined(SATURN)
+bool (*g_modalMessageUntil)(void) = NULL;
+#endif
+
 uint16 GUI_DisplayModalMessage(const char *str, unsigned int spriteID, ...)
 {
 	static char textBuffer[768];
@@ -833,6 +837,14 @@ uint16 GUI_DisplayModalMessage(const char *str, unsigned int spriteID, ...)
 	do {
 		GUI_PaletteAnimate();
 
+#if defined(SATURN)
+		if (g_modalMessageUntil != NULL) {
+			/* up until something happens rather than a key is pressed */
+			ret = g_modalMessageUntil() ? 1 : 0;
+			sleepIdle();
+			continue;
+		}
+#endif
 		ret = Input_WaitForValidInput();
 		sleepIdle();
 	} while (ret == 0 || (ret & 0x800) != 0);
