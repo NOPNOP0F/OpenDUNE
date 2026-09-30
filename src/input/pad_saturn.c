@@ -101,9 +101,15 @@ enum {
 	SCANCODE_RELEASED = 0x80
 };
 
-/* Dune II key code no key sends (between F12 and Scroll Lock), given to the
- * Repair/Upgrade button, which has no shortcut of its own */
-enum { KEY_REPAIR_UPGRADE = 0x7C };
+/* Dune II key codes: arrows and Return as lists take them, and one no key
+ * sends (between F12 and Scroll Lock), given to the Repair/Upgrade button,
+ * which has no shortcut of its own */
+enum {
+	KEY_RETURN = 0x2B,
+	KEY_ARROW_UP = 0x60,
+	KEY_ARROW_DOWN = 0x62,
+	KEY_REPAIR_UPGRADE = 0x7C
+};
 
 /* Saturn keyboard key numbers (PS/2 set 2) standing in for pad buttons */
 enum {
@@ -144,6 +150,7 @@ static volatile int s_stickX = 0, s_stickY = 0;     /* stick travel summed up */
 static volatile bool s_toggleCamera = false;
 static volatile bool s_stickLast = false;           /* 3D Controller: stick used last */
 static volatile bool s_pressA = false;              /* A pressed (for PadSaturn_PickRegion()) */
+static volatile uint16 s_keyA = 0;                  /* a key A sends instead of a click, or 0 */
 static enum { CYCLE_NONE, CYCLE_UNIT, CYCLE_STRUCTURE } s_cycle = CYCLE_NONE;
 
 /* what PadSaturn_HandleEvents() found */
@@ -385,6 +392,13 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 		}
 	}
 
+	/* A: a click, or on a list the key that opens the selected line */
+	if (s_keyA != 0 && saturn_timer_frames() - s_handledFrame <= FOCUS_STALE) {
+		if (pressed & PAD_A) Input_HandleInput(s_keyA);
+		pad &= ~PAD_A;
+		pressed &= ~PAD_A;
+		released &= ~PAD_A;
+	}
 	if (s_positionChanged || ((pressed | released) & PAD_A) != 0) {
 		s_positionChanged = false;
 		Mouse_EventHandler((uint16)s_x, (uint16)s_y, (pad & PAD_A) != 0, false);
@@ -594,6 +608,7 @@ static bool PadSaturn_Focusable(const Widget *w)
 {
 	if (w->flags.invisible || w->width < 8 || w->height < 8) return false;
 	if (w->clickProc == &GUI_Widget_Viewport_Click) return false;
+	if (w->clickProc == &GUI_Widget_Scrollbar_Click) return false;     /* its arrows are */
 	return true;
 }
 
@@ -663,6 +678,39 @@ static bool PadSaturn_InList(Widget *list, Widget *w)
 		if (i == w) return PadSaturn_Focusable(w);
 	}
 	return false;
+}
+
+/* The 3D Controller's stick, off the camera: scrolls the screen's list, a
+ * line each time enough travel has been summed up. */
+static void PadSaturn_StickScroll(Widget *list)
+{
+	Widget *w;
+	int sy;
+	uint32 sr;
+
+	sr = cpu_interrupts_disable();
+	sy = s_stickY;
+	s_stickX = 0;
+	s_stickY = 0;
+	cpu_interrupts_restore(sr);
+	s_stickLast = false;
+	if (sy > -STICK_STEP && sy < STICK_STEP) {
+		/* keep what isn't a line yet */
+		sr = cpu_interrupts_disable();
+		s_stickY += sy;
+		cpu_interrupts_restore(sr);
+		return;
+	}
+
+	for (w = list; w != NULL; w = GUI_Widget_GetNext(w)) {
+		if (w->flags.invisible || w->clickProc != &GUI_Widget_Scrollbar_Click) continue;
+		if (sy < 0) GUI_Widget_Scrollbar_ArrowUp_Click(w);
+		else GUI_Widget_Scrollbar_ArrowDown_Click(w);
+		break;
+	}
+	sr = cpu_interrupts_disable();
+	s_stickY += (sy < 0) ? sy + STICK_STEP : sy - STICK_STEP;
+	cpu_interrupts_restore(sr);
 }
 
 /* Put the reticle on the focused widget. */
@@ -738,6 +786,7 @@ void PadSaturn_HandleEvents(Widget *list)
 
 	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
 	s_handledFrame = saturn_timer_frames();
+	s_keyA = 0;
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE) {
 		s_focusActive = false;
 		s_cameraActive = false;
@@ -761,6 +810,7 @@ void PadSaturn_HandleEvents(Widget *list)
 	if (camera) {
 		s_cameraActive = true;
 		s_focusActive = false;
+		s_keyA = 0;
 		PadSaturn_Camera();
 		lastList = list;
 		return;
@@ -771,18 +821,26 @@ void PadSaturn_HandleEvents(Widget *list)
 		s_cameraActive = false;
 		lastList = NULL;
 	}
-	s_stickX = s_stickY = 0;
+	PadSaturn_StickScroll(list);
 
 	/* a new screen, or the focused widget gone: the nearest one */
 	if (list != lastList || !PadSaturn_InList(list, s_focus)) {
 		s_focus = PadSaturn_MoveFocus(list, NO_DIRECTION);
 		lastList = list;
 	}
+	/* on a list (the Mentat's subjects), up and down move its own selection,
+	 * scrolling at the ends, and A opens it: the keys the list takes */
+	if (s_focus != NULL && s_focus->clickProc == &GUI_Mentat_List_Click && (direction == 0 || direction == 4)) {
+		Input_HandleInput(direction == 0 ? KEY_ARROW_UP : KEY_ARROW_DOWN);
+		PadSaturn_Blip();
+		direction = NO_DIRECTION;
+	}
 	if (direction != NO_DIRECTION && s_focus != NULL) {
 		Widget *next = PadSaturn_MoveFocus(list, direction);
 		if (next != s_focus) PadSaturn_Blip();
 		s_focus = next;
 	}
+	s_keyA = (s_focus != NULL && s_focus->clickProc == &GUI_Mentat_List_Click) ? KEY_RETURN : 0;
 	s_focusActive = s_focus != NULL;
 	PadSaturn_ReticleOnFocus();
 }
@@ -796,6 +854,7 @@ void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeig
 
 	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
 	s_handledFrame = saturn_timer_frames();
+	s_keyA = 0;
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE || lines == 0) {
 		s_focusActive = false;
 		return;
@@ -839,6 +898,7 @@ int PadSaturn_PickRegion(const int16 *x, const int16 *y, const bool *usable, int
 	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
 	if (saturn_timer_frames() - s_handledFrame > FOCUS_STALE) focus = -1;   /* a new map */
 	s_handledFrame = saturn_timer_frames();
+	s_keyA = 0;
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE) return -1;
 
 	sr = cpu_interrupts_disable();
