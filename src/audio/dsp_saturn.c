@@ -35,7 +35,7 @@ typedef struct SaturnVoice {
 
 static bool s_ready = false;
 static int32 s_scratch = -1;
-static uint32 s_endFrame = 0;   /* frame at which the playing voice ends */
+static uint64_t s_endUs = 0;    /* time (saturn_timer_us()) the playing voice ends */
 static int32 s_playing = -1;    /* sound RAM offset of the voice on the slot, playing or done */
 
 /* Find the PCM data of a VOC: first block, type 1, 8-bit unsigned. */
@@ -71,7 +71,7 @@ void DSP_Stop(void)
 {
 	if (!s_ready) return;
 	scsp_stop(VOICE_SLOT);
-	s_endFrame = 0;
+	s_endUs = 0;
 	s_playing = -1;
 }
 
@@ -79,8 +79,7 @@ static void DSP_PlayFromSoundRam(int32 offset, uint32 samples, uint32 rate)
 {
 	scsp_play(VOICE_SLOT, offset, samples, rate, 255);
 	s_playing = offset;
-	/* duration in frames, rounded up; 60 Hz is close enough for PAL too */
-	s_endFrame = saturn_timer_frames() + (samples * 60 + rate - 1) / rate + 1;
+	s_endUs = saturn_timer_us() + (uint64_t)samples * 1000000 / rate + 1;
 }
 
 void DSP_Play(const uint8 *data)
@@ -106,7 +105,7 @@ void DSP_Play(const uint8 *data)
 
 uint8 DSP_GetStatus(void)
 {
-	return (s_endFrame != 0 && saturn_timer_frames() < s_endFrame) ? 2 : 0;
+	return (s_endUs != 0 && saturn_timer_us() < s_endUs) ? 2 : 0;
 }
 
 void *DSP_Saturn_KeepVoc(void *voc, uint32 *size)
