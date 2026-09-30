@@ -28,9 +28,15 @@ static const char *s_currentMusic = NULL;        /*!< Currently loaded music fil
 static uint16 s_currentVoiceSet = 0xFFFE;        /*!< Voice set of the preloaded voices. */
 static uint16 s_spokenWords[NUM_SPEECH_PARTS];   /*!< Buffer with speech to play. */
 static int16 s_currentVoicePriority;            /*!< Priority of the currently playing Speech */
+#if defined(SATURN)
+static uint16 s_expectedFeedback = 0xFFFF;       /*!< Feedback expected to be spoken next (intro). */
+static uint32 s_voiceClock = 0;                  /*!< Counts voices played. */
+static uint32 s_voicePlayed[NUM_VOICES];         /*!< s_voiceClock when each voice last played. */
+#endif
 
 static void *Sound_LoadVoc(const char *filename, uint32 *retFileSize);
 static bool Voice_GetFilename(uint16 voice, uint16 voiceSet, char *filename, size_t size);
+static void Voice_UnloadVoice(uint16 voice);
 
 static void Driver_Music_Play(int16 index, uint16 volume)
 {
@@ -154,6 +160,93 @@ static bool Voice_LoadWhenNeeded(uint16 voice)
 #endif
 }
 
+#if defined(SATURN)
+/**
+ * List the voices to be spoken next: the queued speech, then the expected
+ * feedback.
+ * @param list Where to write them.
+ * @return How many there are.
+ */
+static uint8 Voice_ListUpcoming(uint16 *list)
+{
+	uint8 count = 0;
+	uint8 i;
+
+	for (i = 0; i < NUM_SPEECH_PARTS; i++) {
+		if (s_spokenWords[i] != 0xFFFF) list[count++] = s_spokenWords[i];
+	}
+	if (s_expectedFeedback != 0xFFFF) {
+		for (i = 0; i < NUM_SPEECH_PARTS; i++) {
+			uint16 voice = (g_config.language == LANGUAGE_ENGLISH) ? g_feedback[s_expectedFeedback].voiceId[i] : g_translatedVoice[s_expectedFeedback][i];
+			if (voice != 0xFFFF) list[count++] = voice;
+		}
+	}
+	return count;
+}
+
+/**
+ * Unload the voice in sound RAM that was played longest ago (or never), to
+ * make room; voices coming up and the voice playing stay.
+ * @param upcoming The voices coming up.
+ * @param count How many there are.
+ * @return False if there was nothing to unload.
+ */
+static bool Voice_UnloadOldest(const uint16 *upcoming, uint8 count)
+{
+	uint16 oldest = 0xFFFF;
+	uint16 voice;
+
+	for (voice = 0; voice < NUM_VOICES; voice++) {
+		uint8 i;
+
+		if (g_voiceData[voice] == NULL || DSP_Saturn_IsPlaying(g_voiceData[voice])) continue;
+		for (i = 0; i < count && upcoming[i] != voice; i++) {}
+		if (i < count) continue;
+		if (oldest == 0xFFFF || s_voicePlayed[voice] < s_voicePlayed[oldest]) oldest = voice;
+	}
+	if (oldest == 0xFFFF) return false;
+
+	Voice_UnloadVoice(oldest);
+	return true;
+}
+
+/**
+ * Read one voice coming up into sound RAM, while the one playing goes on:
+ * voices that didn't fit when the voice set was loaded would otherwise be
+ * read from the disc between two words.
+ */
+static void Voice_ReadAhead(void)
+{
+	uint16 upcoming[NUM_SPEECH_PARTS * 2];
+	uint8 count = Voice_ListUpcoming(upcoming);
+	uint8 i;
+
+	for (i = 0; i < count; i++) {
+		uint16 voice = upcoming[i];
+		char filename[16];
+		uint32 size;
+
+		if (g_voiceData[voice] != NULL) continue;
+		if (!Voice_GetFilename(voice, s_currentVoiceSet, filename, sizeof(filename))) continue;
+		if (!File_Exists_GetSize(filename, &size)) continue;
+
+		while (!DSP_Saturn_CanKeep(size) && Voice_UnloadOldest(upcoming, count)) {}
+		g_voiceData[voice] = Sound_LoadVoc(filename, &g_voiceDataSize[voice]);
+		return;
+	}
+}
+
+/**
+ * Tell which feedback is expected to be spoken next, so its voices can be
+ * read ahead.
+ * @param index The feedback, or 0xFFFF for none.
+ */
+void Sound_Saturn_ExpectFeedback(uint16 index)
+{
+	s_expectedFeedback = index;
+}
+#endif
+
 /**
  * Play a voice. Volume is based on distance to position.
  * @param voiceID Which voice to play.
@@ -180,6 +273,9 @@ void Voice_PlayAtTile(int16 voiceID, tile32 position)
 	if (g_enableVoices != 0 && index != 0xFFFF && g_table_voices[index].priority >= s_currentVoicePriority &&
 			(g_voiceData[index] != NULL || Voice_LoadWhenNeeded(index))) {
 		s_currentVoicePriority = g_table_voices[index].priority;
+#if defined(SATURN)
+		s_voicePlayed[index] = ++s_voiceClock;
+#endif
 		if (g_voiceData[index] != NULL) memmove(g_readBuffer, g_voiceData[index], g_voiceDataSize[index]);
 
 		Driver_Voice_Play(g_readBuffer, s_currentVoicePriority);
@@ -380,6 +476,9 @@ void Sound_StartSound(uint16 index)
 	if (index == 0xFFFF || g_gameConfig.sounds == 0 || (int16)g_table_voices[index].priority < (int16)s_currentVoicePriority) return;
 
 	s_currentVoicePriority = g_table_voices[index].priority;
+#if defined(SATURN)
+	s_voicePlayed[index] = ++s_voiceClock;
+#endif
 
 	if (g_voiceData[index] != NULL) {
 		Driver_Voice_Play(g_voiceData[index], 0xFF);
@@ -464,11 +563,21 @@ bool Sound_StartSpeech(void)
 {
 	if (g_gameConfig.sounds == 0) return false;
 
-	if (Driver_Voice_IsPlaying()) return true;
+	if (Driver_Voice_IsPlaying()) {
+#if defined(SATURN)
+		Voice_ReadAhead();
+#endif
+		return true;
+	}
 
 	s_currentVoicePriority = 0;
 
-	if (s_spokenWords[0] == 0xFFFF) return false;
+	if (s_spokenWords[0] == 0xFFFF) {
+#if defined(SATURN)
+		Voice_ReadAhead();
+#endif
+		return false;
+	}
 
 	Sound_StartSound(s_spokenWords[0]);
 	/* Move speech parts one place. */

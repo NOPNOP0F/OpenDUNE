@@ -19,6 +19,8 @@ extern void scsp_init(void);
 /* Sound RAM allocation. Returns an offset into sound RAM, or -1. */
 extern int32_t scsp_alloc(uint32_t size);
 extern void scsp_free(int32_t offset);
+/* The largest size scsp_alloc() can give now. */
+extern uint32_t scsp_largest_free(void);
 
 /* Copy unsigned 8-bit PCM to sound RAM as signed 8-bit PCM. */
 extern void scsp_upload_u8(int32_t offset, const uint8_t *pcm, uint32_t length);

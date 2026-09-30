@@ -129,6 +129,16 @@ void scsp_free(int32_t offset)
 	}
 }
 
+uint32_t scsp_largest_free(void)
+{
+	uint32_t largest = 0;
+	int i;
+	for (i = 0; i < s_blockCount; i++) {
+		if (!s_blocks[i].used && s_blocks[i].size > largest) largest = s_blocks[i].size;
+	}
+	return largest;
+}
+
 void scsp_upload_u8(int32_t offset, const uint8_t *pcm, uint32_t length)
 {
 	volatile uint16_t *dst = SCSP_RAM + offset / 2;

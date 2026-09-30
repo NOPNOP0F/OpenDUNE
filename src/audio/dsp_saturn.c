@@ -36,6 +36,7 @@ typedef struct SaturnVoice {
 static bool s_ready = false;
 static int32 s_scratch = -1;
 static uint32 s_endFrame = 0;   /* frame at which the playing voice ends */
+static int32 s_playing = -1;    /* sound RAM offset of the playing voice */
 
 /* Find the PCM data of a VOC: first block, type 1, 8-bit unsigned. */
 static bool DSP_ParseVoc(const uint8 *data, const uint8 **pcm, uint32 *length, uint32 *rate)
@@ -76,6 +77,7 @@ void DSP_Stop(void)
 static void DSP_PlayFromSoundRam(int32 offset, uint32 samples, uint32 rate)
 {
 	scsp_play(VOICE_SLOT, offset, samples, rate, 255);
+	s_playing = offset;
 	/* duration in frames, rounded up; 60 Hz is close enough for PAL too */
 	s_endFrame = saturn_timer_frames() + (samples * 60 + rate - 1) / rate + 1;
 }
@@ -145,8 +147,20 @@ void DSP_Saturn_FreeVoc(void *data)
 	SaturnVoice *voice = data;
 	if (voice == NULL) return;
 	if (voice->magic == DESCRIPTOR_MAGIC) {
-		DSP_Stop();     /* it may be the one playing */
+		if (DSP_Saturn_IsPlaying(voice)) DSP_Stop();
 		scsp_free(voice->offset);
 	}
 	free(voice);
+}
+
+bool DSP_Saturn_CanKeep(uint32 fileSize)
+{
+	/* the PCM data is shorter than the file */
+	return s_ready && scsp_largest_free() >= fileSize + SCSP_TAIL;
+}
+
+bool DSP_Saturn_IsPlaying(const void *data)
+{
+	const SaturnVoice *voice = data;
+	return voice != NULL && voice->magic == DESCRIPTOR_MAGIC && voice->offset == s_playing && DSP_GetStatus() != 0;
 }

@@ -14,6 +14,10 @@ extern void DSP_Uninit(void);
  * to keep instead, and its size, or NULL if it has to be loaded when needed. */
 extern void *DSP_Saturn_KeepVoc(void *voc, uint32 *size);
 extern void DSP_Saturn_FreeVoc(void *data);
+/* Whether a VOC file of this size can be kept in sound RAM now. */
+extern bool DSP_Saturn_CanKeep(uint32 fileSize);
+/* Whether data (from DSP_Saturn_KeepVoc) is the voice playing. */
+extern bool DSP_Saturn_IsPlaying(const void *data);
 #endif
 
 #endif /* DSP_H */
