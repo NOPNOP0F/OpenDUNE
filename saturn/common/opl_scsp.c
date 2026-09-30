@@ -3,7 +3,10 @@
  * Each of the 9 OPL channels gets two SCSP slots, modulator and carrier,
  * playing one of the four OPL waveforms from a 1024-sample 16-bit table
  * (the SCSP's FM depth, MDL, is defined for 1024-sample waves):
- *   frequency   fnum * 49716 / 2^(20 - block) * multiple, as OCT/FNS
+ *   frequency   fnum * 49716 / 2^(20 - block) * multiple, as OCT/FNS;
+ *               channels sounding above 15 kHz are shifted down to 15 kHz
+ *               (at the OPL's 49.7 kHz a 20 kHz tone is fine; at the SCSP's
+ *               44.1 kHz its FM would fold back into piercing tones)
  *   FM          carrier modulated by the modulator's output, MDL 0xC
  *               (+-8 pi, like the OPL's full-level modulator); additive
  *               channels instead send both slots to the output
@@ -21,11 +24,7 @@
  *               slot kept keyed on through the release
  *   key off/on  key offs wait for the end of the driver tick, so a key off
  *               and on in one tick restarts a hardware envelope cleanly
- *   level       total level and key scale level -> TL; sounding operators
- *               above 12 kHz fade out to silence at 16 kHz, as the AdLib's
- *               output filter and ears do (at the OPL's 49.7 kHz a 20 kHz
- *               tone is fine; at the SCSP's 44.1 kHz its FM would fold back
- *               into piercing audible tones)
+ *   level       total level and key scale level -> TL
  *   AM / VIB    the slot's LFO (triangle), at the OPL's rates and depths
  * Register values from the SCSP User's Manual; the OPL side follows the
  * YM3812 behaviour as modelled by Nuked OPL3. Tuned by ear against the
@@ -41,7 +40,8 @@ enum {
 	CHANNELS = 9,
 	FIRST_SLOT = 1,             /* slot 0 plays speech */
 	WAVE_SAMPLES = 1024,
-	MIX_LEVEL = 5               /* DISDL of sounding operators: -12 dB */
+	MIX_LEVEL = 5,              /* DISDL of sounding operators: -12 dB */
+	X_MAX = 632739              /* 15 kHz in op_x() units */
 };
 
 /* operator register offset of each channel's modulator; carrier is +3 */
@@ -132,37 +132,36 @@ static int build_waves(void)
 	return 1;
 }
 
-/* OCT/FNS for an operator: a 1024-sample wave at the operator frequency. */
-static uint16_t op_pitch(int channel, int op)
+/* An operator's frequency in OPL units: hz = x * 49716 / 2^21. */
+static uint32_t op_x(int channel, int op)
 {
 	uint8_t bx = s_regs[0xB0 + channel];
 	uint32_t fnum = ((uint32_t)(bx & 3) << 8) | s_regs[0xA0 + channel];
-	uint32_t block = (bx >> 2) & 7;
-	uint32_t x = (fnum * s_multiple2[op_reg(0x20, channel, op) & 0xF]) << block;
-	/* rate / 44100 in 16.16: x * 49716 * 1024 / 2^20 / 44100 / 2 = x * 36.0751 */
-	uint64_t ratio = ((uint64_t)x * 2364218) >> 16;
+	return (fnum * s_multiple2[op_reg(0x20, channel, op) & 0xF]) << ((bx >> 2) & 7);
+}
+
+/* OCT/FNS for an operator: a 1024-sample wave at the operator frequency.
+ * A channel whose sounding tone is above 15 kHz (the credits counting down
+ * is at 20 kHz, which aliases on the SCSP) plays with its tone at 15 kHz,
+ * both operators shifted alike to keep the timbre. */
+static uint16_t op_pitch(int channel, int op)
+{
+	uint32_t x = op_x(channel, op);
+	uint32_t top = op_x(channel, 1);
+	uint64_t ratio;
 	int octave = 0;
 
+	if ((s_regs[0xC0 + channel] & 1) && op_x(channel, 0) > top) top = op_x(channel, 0);
+	if (top > X_MAX) x = (uint32_t)((uint64_t)x * X_MAX / top);
+
+	/* rate / 44100 in 16.16: x * 49716 * 1024 / 2^20 / 44100 / 2 = x * 36.0751 */
+	ratio = ((uint64_t)x * 2364218) >> 16;
 	if (ratio == 0) return scsp_pitch(-8, 0);
 	while (ratio >= (2u << 16)) { ratio >>= 1; octave++; }
 	while (ratio < (1u << 16)) { ratio <<= 1; octave--; }
 	if (octave > 7) return scsp_pitch(7, 1023);
 	if (octave < -8) return scsp_pitch(-8, 0);
 	return scsp_pitch(octave, (uint16_t)((ratio - 65536) >> 6));
-}
-
-/* Attenuation (TL units) for an operator's frequency, as a low-pass filter:
- * none up to 12 kHz, then down to silence at 16 kHz. */
-static uint32_t op_filter(int channel, int op)
-{
-	uint8_t bx = s_regs[0xB0 + channel];
-	uint32_t fnum = ((uint32_t)(bx & 3) << 8) | s_regs[0xA0 + channel];
-	uint32_t x = (fnum * s_multiple2[op_reg(0x20, channel, op) & 0xF]) << ((bx >> 2) & 7);
-	uint32_t hz = (uint32_t)(((uint64_t)x * 49716) >> 21);     /* / 2^20, multiple in halves */
-
-	if (hz <= 12000) return 0;
-	if (hz >= 16000) return 255;
-	return (hz - 12000) * 255 / 4000;
 }
 
 /* SCSP rate for an OPL rate (0-15) with the channel's key scale offset:
@@ -258,7 +257,7 @@ static void op_setup(int channel, int op)
 	 * fade on sounding operators */
 	if (ksl < 0) ksl = 0;
 	level = (r40 & 0x3F) * 2 + ((uint32_t)ksl >> s_kslShift[r40 >> 6]) / 2;
-	if (op_sounding(channel, op)) level += s_channelAtt[channel] + op_filter(channel, op);
+	if (op_sounding(channel, op)) level += s_channelAtt[channel];
 	if (level > 255) level = 255;
 
 	/* sustaining operators hold at the sustain level, others keep decaying */
