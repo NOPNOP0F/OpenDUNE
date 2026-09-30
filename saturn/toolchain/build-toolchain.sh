@@ -3,8 +3,9 @@
 #
 # Same stages as SSSDK/Saturn-SDK-GCC-SH2 (binutils, bootstrap GCC, newlib,
 # final GCC), but with current releases that build with a modern host
-# compiler, C only, and binutils built with all object formats so objcopy
-# can convert Sega's Hitachi SH COFF libraries to ELF.
+# compiler, C (and C++ without its library, for the AdLib driver), and
+# binutils built with all object formats so objcopy can convert Sega's
+# Hitachi SH COFF libraries to ELF.
 #
 # Usage: saturn/toolchain/build-toolchain.sh
 #   PREFIX  install directory   (default: saturn/toolchain/install)
@@ -88,7 +89,7 @@ build_newlib() {
 
 build_gcc_final() {
 	"$WORKDIR/src/gcc-$GCC_VER/configure" --target=$TARGET --prefix="$PREFIX" \
-		--with-cpu=m2 --enable-languages=c --with-newlib --enable-lto \
+		--with-cpu=m2 --enable-languages=c,c++ --disable-libstdcxx --with-newlib --enable-lto \
 		--disable-multilib --disable-shared --disable-threads --disable-nls \
 		--disable-libssp --disable-libgomp --disable-libquadmath
 	make -j"$NCPU"
