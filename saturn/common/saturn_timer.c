@@ -44,8 +44,14 @@ void saturn_timer_init(void)
 
 static uint16_t frt_read(void)
 {
-	uint8_t high = FRT_FRCH;    /* reading the high byte latches the low one */
-	return (uint16_t)((high << 8) | FRT_FRCL);
+	/* Reading the high byte latches the low one in a register shared by
+	 * everyone: an interrupt reading the counter in between would leave
+	 * its own low byte there. */
+	uint32_t sr = cpu_interrupts_disable();
+	uint8_t high = FRT_FRCH;
+	uint8_t low = FRT_FRCL;
+	cpu_interrupts_restore(sr);
+	return (uint16_t)((high << 8) | low);
 }
 
 void saturn_delay_us(uint32_t us)
@@ -66,8 +72,11 @@ void saturn_delay_us(uint32_t us)
 
 uint64_t saturn_timer_us(void)
 {
+	static volatile uint64_t last = 0;
 	uint32_t frames, since, frameUs = 1000000 / s_frameRate;
 	uint16_t start;
+	uint64_t now;
+	uint32_t sr;
 
 	/* read the frame count and its start time consistently */
 	do {
@@ -78,7 +87,14 @@ uint64_t saturn_timer_us(void)
 
 	since = since * 2 / 7;      /* about 3.5 counts per us, as in saturn_delay_us() */
 	if (since > frameUs) since = frameUs;
-	return (uint64_t)frames * frameUs + since;
+	now = (uint64_t)frames * frameUs + since;
+
+	/* never go back, whoever asks (the estimate within a frame is rough) */
+	sr = cpu_interrupts_disable();
+	if (now < last) now = last;
+	last = now;
+	cpu_interrupts_restore(sr);
+	return now;
 }
 
 uint32_t saturn_timer_frames(void)
