@@ -898,14 +898,24 @@ static void PadSaturn_Camera(void)
 }
 
 /* A new screen: forget what was pressed for the one before. */
-static void PadSaturn_NewScreen(void)
+/* The focus jumps by itself (not with the D-pad): let go of the button
+ * where the cursor is now, and ignore A until it is released, or the
+ * release would click where the focus lands (placing a structure ends on
+ * the Options button, a command button hands over to the camera). */
+static void PadSaturn_ReleaseA(void)
 {
-	/* let go of the button now, before forgetting: a release coming later
-	 * would finish a click on the new screen's focused button */
 	if (s_previous & PAD_A) {
 		Mouse_EventHandler((uint16)s_x, (uint16)s_y, false, false);
 		s_previous &= ~PAD_A;
+		s_blockA = true;
 	}
+}
+
+static void PadSaturn_NewScreen(void)
+{
+	/* let go before forgetting: a release coming later would finish a
+	 * click on the new screen's focused button */
+	PadSaturn_ReleaseA();
 	Input_History_Clear();
 	s_blockA = true;
 	s_pressA = false;
@@ -967,6 +977,7 @@ void PadSaturn_HandleEvents(Widget *list)
 	camera = mission && (targeting || (s_controller == CONTROLLER_3D ? s_stickLast : s_camera));
 
 	if (camera) {
+		if (!s_cameraActive) PadSaturn_ReleaseA();
 		s_cameraActive = true;
 		s_focusActive = false;
 		s_keyA = 0;
@@ -978,6 +989,7 @@ void PadSaturn_HandleEvents(Widget *list)
 
 	if (s_cameraActive) {
 		/* back from the camera: focus the nearest button */
+		PadSaturn_ReleaseA();
 		s_cameraActive = false;
 		s_focus = NULL;
 	}
@@ -986,6 +998,7 @@ void PadSaturn_HandleEvents(Widget *list)
 	/* a new screen, or the focused widget gone: the nearest one */
 	if (fresh || !PadSaturn_InList(list, s_focus)) {
 		if (fresh) PadSaturn_NewScreen();
+		else PadSaturn_ReleaseA();
 		s_focus = PadSaturn_MoveFocus(list, NO_DIRECTION);
 		lastList = list;
 	}
