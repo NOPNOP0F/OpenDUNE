@@ -70,4 +70,7 @@ extern void scsp_upload_tail(int32_t offset);
 extern void scsp_play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_t volume);
 extern void scsp_stop(int slot);
 
+/* Call handler about every millisecond from timer A's interrupt. */
+extern void scsp_timer_start(void (*handler)(void));
+
 #endif /* SATURN_SCSP_H */

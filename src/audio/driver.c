@@ -123,8 +123,7 @@ static bool Drivers_SoundMusic_Init(bool enable)
 #if defined(_WIN32)
 	MPU_StartThread(1000000 / 120);
 #elif defined(SATURN)
-	/* as often as possible: it keeps its own time */
-	Timer_Add(MPU_Interrupt, 0, false);
+	/* the SCSP timer interrupt drives the music (mpu_adlib_saturn.c) */
 #else
 	Timer_Add(MPU_Interrupt, 1000000 / 120, false);
 #endif

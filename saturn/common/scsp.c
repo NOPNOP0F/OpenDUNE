@@ -3,6 +3,7 @@
  * Register layout from the SCSP User's Manual (Figure 4.2, Table 4.4). */
 
 #include <stddef.h>
+#include "bios.h"
 #include "saturn_hw.h"
 #include "scsp.h"
 #include "smpc.h"
@@ -10,9 +11,18 @@
 #define SCSP_RAM        ((volatile uint16_t *)0x25A00000UL)
 #define SCSP_SLOT(n, r) REG16(0x25B00000UL + (n) * 0x20 + (r))
 #define SCSP_COMMON     REG16(0x25B00400UL)
+#define SCSP_TIMER_A    REG16(0x25B00418UL)     /* TACTL (10-8), TIMA (7-0) */
+#define SCSP_MCIEB      REG16(0x25B0042AUL)     /* main CPU interrupt enable */
+#define SCSP_MCIPD      REG16(0x25B0042CUL)     /* main CPU interrupt pending */
+#define SCSP_MCIRE      REG16(0x25B0042EUL)     /* main CPU interrupt reset */
 
 enum {
 	SMPC_CMD_SNDOFF = 0x07,
+	INT_TIMER_A = 1 << 6,       /* SCSP interrupt bit (MAME's SCSP has the same) */
+	SCU_VECTOR_SOUND = 0x46,    /* SCU interrupt from the SCSP */
+	SCU_MASK_SOUND = 1 << 6,
+	/* timer A counts at 44.1 kHz and interrupts at 0xFF: 44 counts = 1 ms */
+	TIMER_A_VALUE = (0 << 8) | (255 - 44),
 	SLOT_COUNT = 32,
 	BLOCK_MAX = 128,
 	OUTPUT_RATE = 44100
@@ -212,4 +222,24 @@ void scsp_play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_
 void scsp_stop(int slot)
 {
 	scsp_note_off(slot);
+}
+
+static void (*s_timerHandler)(void);
+
+static void scsp_interrupt(void)
+{
+	if (!(SCSP_MCIPD & INT_TIMER_A)) return;
+	SCSP_MCIRE = INT_TIMER_A;
+	SCSP_TIMER_A = TIMER_A_VALUE;       /* count the next millisecond */
+	if (s_timerHandler != NULL) s_timerHandler();
+}
+
+void scsp_timer_start(void (*handler)(void))
+{
+	s_timerHandler = handler;
+	SCSP_MCIRE = 0x7FF;
+	SCSP_TIMER_A = TIMER_A_VALUE;
+	SCSP_MCIEB = INT_TIMER_A;
+	BIOS_SETUINT(SCU_VECTOR_SOUND, scsp_interrupt);
+	BIOS_CHGSCUIM(~SCU_MASK_SOUND, 0);
 }
