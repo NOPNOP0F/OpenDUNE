@@ -58,6 +58,13 @@ static void new_line(void)
 	if (s_state == CONSOLE_SHOWN) draw_all();
 }
 
+const uint8_t *console_glyph(char c)
+{
+	unsigned char u = (unsigned char)c;
+	if (u < 32 || u > 126) u = ' ';
+	return s_font8x8[u - 32];
+}
+
 void console_show(void)
 {
 	if (s_state == CONSOLE_OFF) memset(s_text, ' ', sizeof(s_text));
