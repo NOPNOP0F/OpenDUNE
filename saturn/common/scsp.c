@@ -174,6 +174,13 @@ void scsp_note_off(int slot)
 	SCSP_SLOT(slot, 0x00) = (SCSP_SLOT(slot, 0x00) & ~(KEY_ON | KEY_ON_EXECUTE)) | KEY_ON_EXECUTE;
 }
 
+void scsp_upload_tail(int32_t offset)
+{
+	volatile uint16_t *dst = SCSP_RAM + offset / 2;
+	int i;
+	for (i = 0; i < SCSP_TAIL / 2; i++) dst[i] = 0;
+}
+
 void scsp_play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_t volume)
 {
 	/* pitch: rate / 44100 = 2^OCT * (1 + FNS / 1024) */
@@ -182,14 +189,15 @@ void scsp_play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_
 	ScspNote note;
 
 	if (samples == 0 || f == 0) return;
-	if (samples > 0xFFFF) samples = 0xFFFF;
+	if (samples > 0xFFFF - SCSP_TAIL) samples = 0xFFFF - SCSP_TAIL;
 	while (f < 1024) { f <<= 1; octave--; }
 	while (f >= 2048) { f >>= 1; octave++; }
 
+	/* once through the samples, then round the silent tail */
 	note.offset = offset;
-	note.loopStart = 0;
-	note.end = (uint16_t)(samples - 1);
-	note.loop = 0;
+	note.loopStart = (uint16_t)samples;
+	note.end = (uint16_t)(samples + SCSP_TAIL - 1);
+	note.loop = 1;
 	note.attack = 31;
 	note.decay1 = 0;
 	note.decayLevel = 0;

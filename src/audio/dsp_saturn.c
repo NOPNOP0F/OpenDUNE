@@ -21,6 +21,7 @@
 enum {
 	VOICE_SLOT = 0,
 	SCRATCH_SIZE = 32 * 1024,   /* g_readBuffer is at most 28000 bytes */
+	SCRATCH_MAX = SCRATCH_SIZE - SCSP_TAIL,
 	DESCRIPTOR_MAGIC = 0x534E4431   /* "SND1" */
 };
 
@@ -94,8 +95,9 @@ void DSP_Play(const uint8 *data)
 	}
 
 	if (!DSP_ParseVoc(data, &pcm, &length, &rate)) return;
-	if (length > SCRATCH_SIZE) length = SCRATCH_SIZE;
+	if (length > SCRATCH_MAX) length = SCRATCH_MAX;
 	scsp_upload_u8(s_scratch, pcm, length);
+	scsp_upload_tail(s_scratch + (int32)((length + 1) & ~1u));
 	DSP_PlayFromSoundRam(s_scratch, length, rate);
 }
 
@@ -117,7 +119,7 @@ void *DSP_Saturn_KeepVoc(void *voc, uint32 *size)
 	}
 
 	voice = malloc(sizeof(SaturnVoice));
-	offset = scsp_alloc(length);
+	offset = scsp_alloc(((length + 1) & ~1u) + SCSP_TAIL);
 	if (voice == NULL || offset < 0) {
 		/* sound RAM is full: the voice will be loaded when it is needed */
 		if (offset >= 0) scsp_free(offset);
@@ -127,6 +129,7 @@ void *DSP_Saturn_KeepVoc(void *voc, uint32 *size)
 	}
 
 	scsp_upload_u8(offset, pcm, length);
+	scsp_upload_tail(offset + (int32)((length + 1) & ~1u));
 	free(voc);
 
 	voice->magic = DESCRIPTOR_MAGIC;
