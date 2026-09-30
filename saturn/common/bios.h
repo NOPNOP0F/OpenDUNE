@@ -18,6 +18,11 @@
 #define BIOS_CHGSCUIM(and_mask, or_mask) \
 	((**(void (**)(uint32_t, uint32_t))0x06000344)((and_mask), (or_mask)))
 
+/* Leave the program for the BIOS multiplayer screen: what A+B+C+Start
+ * must do (SBL6 SYS_EXECDMP). */
+#define BIOS_EXECDMP() \
+	((**(void (**)(void))0x0600026C)())
+
 /* SCU interrupt vectors and mask bits (SBL6 SEGA_INT.H) */
 #define SCU_VECTOR_VBLANK_IN   0x40
 #define SCU_MASK_VBLANK_IN     (1 << 0)

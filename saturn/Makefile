@@ -120,7 +120,7 @@ ENGINE_SRCS := \
 	crashlog/crashlog_none.c cutscene.c explosion.c file.c gfx.c gui/editbox.c \
 	gui/font.c gui/gui.c gui/mentat.c gui/security.c gui/viewport.c gui/widget.c \
 	gui/widget_click.c gui/widget_draw.c house.c ini.c inifile.c input/input.c \
-	input/mouse.c load.c map.c object.c opendune.c os/endian.c os/error.c \
+	input/mouse.c input/pad_saturn.c load.c map.c object.c opendune.c os/endian.c os/error.c \
 	os/readdir_saturn.c pool/house.c pool/structure.c pool/team.c pool/unit.c \
 	save.c saveload/house.c saveload/info.c saveload/map.c saveload/object.c \
 	saveload/saveload.c saveload/scenario.c saveload/scriptengine.c \

@@ -14,4 +14,7 @@ extern uint32_t saturn_timer_frames(void);
 /* Milliseconds since saturn_timer_init(), with frame (16-20 ms) resolution. */
 extern uint32_t saturn_timer_ms(void);
 
+/* Also run hook in every VBlank-in interrupt (NULL to stop). Keep it short. */
+extern void saturn_timer_set_vblank_hook(void (*hook)(void));
+
 #endif /* SATURN_TIMER_H */

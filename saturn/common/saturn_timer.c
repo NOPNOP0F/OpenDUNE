@@ -1,15 +1,23 @@
 /** @file saturn/common/saturn_timer.c Frame counter driven by the VBlank-in interrupt. */
 
+#include <stddef.h>
 #include "bios.h"
 #include "saturn_hw.h"
 #include "saturn_timer.h"
 
 static volatile uint32_t s_frames;
 static uint32_t s_frameRate = 60;
+static void (*volatile s_vblankHook)(void);
 
 static void vblank_in(void)
 {
 	s_frames++;
+	if (s_vblankHook != NULL) s_vblankHook();
+}
+
+void saturn_timer_set_vblank_hook(void (*hook)(void))
+{
+	s_vblankHook = hook;
 }
 
 void saturn_timer_init(void)
