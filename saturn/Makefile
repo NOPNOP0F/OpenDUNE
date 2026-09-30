@@ -19,6 +19,10 @@ BUILD     := build
 # Dune II v1.07 data files; only the PAK archives go on the disc
 DATA      ?= ../bin/data
 
+# General MIDI SoundFont the music instruments are taken from (INSTR.BNK);
+# without it the disc has no music
+SOUNDFONT ?= /usr/share/soundfonts/FluidR3_GM.sf2
+
 CFLAGS    := -m2 -O2 -std=gnu11 -Wall -Wextra -Icommon
 LDFLAGS   := -m2 -nostartfiles -Wl,--no-warn-rwx-segments -T common/saturn.ld
 SBL_LIBS  := $(BUILD)/libsbl.a $(BUILD)/libcdc.a
@@ -173,7 +177,18 @@ $(BUILD)/%/data.stamp: $(DATA_PAKS)
 	for f in $(DATA_PAKS); do cp $$f $(@D)/disc/$$(basename $$f | tr a-z A-Z); done
 	touch $@
 
-$(BUILD)/opendune.iso: $(BUILD)/opendune/data.stamp
+$(BUILD)/opendune.iso: $(BUILD)/opendune/data.stamp $(BUILD)/opendune/bank.stamp
+
+# instrument bank for the MIDI synthesizer (src/audio/midi_saturn.c)
+$(BUILD)/opendune/bank.stamp: tools/make_bank.py tools/xmi.py $(wildcard $(DATA)/SOUND.PAK $(DATA)/sound.pak) $(wildcard $(SOUNDFONT))
+	@mkdir -p $(@D)/disc
+	@if [ -f "$(SOUNDFONT)" ]; then \
+		python3 -B tools/make_bank.py $(firstword $(wildcard $(DATA)/SOUND.PAK $(DATA)/sound.pak)) $(SOUNDFONT) $(@D)/disc/INSTR.BNK; \
+	else \
+		echo "warning: no SoundFont at $(SOUNDFONT) (set SOUNDFONT=...): the disc will have no music"; \
+		rm -f $(@D)/disc/INSTR.BNK; \
+	fi
+	touch $@
 
 # keep the files the pattern rules produce along the way
 .SECONDARY:
