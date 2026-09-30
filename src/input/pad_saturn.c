@@ -30,6 +30,11 @@
  *   as they are; the arrows work as the D-pad, Space as A and Tab as C.
  * Keyboard and mouse: as on DOS.
  *
+ * With the pad-like controllers the mouse pointer is hidden but where the
+ * cursor moves freely: the focused button gets a reticle, drawn on the
+ * VDP2 overlay (the menu lines change colour instead), and so does the
+ * centre tile of the camera.
+ *
  * Mouse and key events go to the engine from Video_Tick, as other video
  * drivers deliver them. Moving the focus and the camera needs the game's
  * state, so it happens in PadSaturn_HandleEvents(), called by
@@ -61,6 +66,7 @@
 #include "saturn_hw.h"
 #include "saturn_timer.h"
 #include "smpc.h"
+#include "vdp2.h"
 
 enum {
 	SPEED_SLOW = 1,             /* free cursor, pixels per frame */
@@ -80,6 +86,8 @@ enum {
 	 * view (tile 7, 5 of the 15 x 10 shown from 0, 40) */
 	CAMERA_X = 7 * 16 + 8,
 	CAMERA_Y = 40 + 5 * 16 + 8,
+	/* the 320x200 picture is centred in the 224 lines shown (video_saturn.c) */
+	OVERLAY_TOP = (VDP2_DISPLAY_H - SCREEN_HEIGHT) / 2,
 	NO_DIRECTION = 0xFFFF
 };
 
@@ -143,6 +151,9 @@ static bool s_camera = false;                       /* camera mode chosen with C
 static volatile bool s_cameraActive = false;        /* the cursor is the camera's */
 static volatile bool s_focusActive = false;         /* the screen has buttons to focus */
 static volatile uint32 s_handledFrame = 0;
+
+static bool s_pointerVisible = true;                /* the mouse pointer is drawn */
+static int s_reticleX, s_reticleY, s_reticleW = 0, s_reticleH = 0;  /* on the overlay */
 
 void PadSaturn_Init(void)
 {
@@ -446,6 +457,66 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 	}
 }
 
+/* Brackets round the corners of a rectangle, with a dark edge outside. */
+static void PadSaturn_Brackets(int x, int y, int w, int h, int light, int dark)
+{
+	int arm = (w < h ? w : h) / 3;
+	int x1, y1;
+	int i, t;
+
+	/* just outside the rectangle, clear of what's written in it */
+	x -= 3;
+	y += OVERLAY_TOP - 3;
+	x1 = x + w + 5;
+	y1 = y + h + 5;
+
+	if (arm < 3) arm = 3;
+	if (arm > 7) arm = 7;
+	for (i = -1; i <= arm; i++) {
+		for (t = -1; t <= 1; t++) {
+			int c = (t == -1 || i == -1) ? dark : light;
+			/* horizontal arms, then vertical ones, at each corner */
+			vdp2_overlay_pixel(x + i, y + t, c);  vdp2_overlay_pixel(x1 - i, y + t, c);
+			vdp2_overlay_pixel(x + i, y1 - t, c); vdp2_overlay_pixel(x1 - i, y1 - t, c);
+			vdp2_overlay_pixel(x + t, y + i, c);  vdp2_overlay_pixel(x1 - t, y + i, c);
+			vdp2_overlay_pixel(x + t, y1 - i, c); vdp2_overlay_pixel(x1 - t, y1 - i, c);
+		}
+	}
+}
+
+/* Show the reticle round a rectangle (none for a width of 0). */
+static void PadSaturn_SetReticle(int x, int y, int w, int h)
+{
+	if (x == s_reticleX && y == s_reticleY && w == s_reticleW && h == s_reticleH) return;
+	if (s_reticleW > 0) PadSaturn_Brackets(s_reticleX, s_reticleY, s_reticleW, s_reticleH, VDP2_OVERLAY_CLEAR, VDP2_OVERLAY_CLEAR);
+	s_reticleX = x;
+	s_reticleY = y;
+	s_reticleW = w;
+	s_reticleH = h;
+	if (w > 0) PadSaturn_Brackets(x, y, w, h, VDP2_OVERLAY_LIGHT, VDP2_OVERLAY_DARK);
+}
+
+/* Draw the mouse pointer or not, redrawing it if it is on show. */
+static void PadSaturn_SetPointer(bool visible)
+{
+	if (visible == s_pointerVisible) return;
+	if (g_mouseHiddenDepth != 0) {
+		s_pointerVisible = visible;     /* drawn or not when next shown */
+		return;
+	}
+	if (g_mouseLock != 0) return;       /* the engine is at it: next frame */
+	g_mouseLock++;
+	GUI_Mouse_Hide();
+	s_pointerVisible = visible;
+	GUI_Mouse_Show();
+	g_mouseLock--;
+}
+
+bool PadSaturn_PointerVisible(void)
+{
+	return s_pointerVisible;
+}
+
 void PadSaturn_Tick(void)
 {
 	SmpcDevice d[2];
@@ -470,6 +541,17 @@ void PadSaturn_Tick(void)
 		case CONTROLLER_NONE: break;
 		case CONTROLLER_KEYBOARD_MOUSE: PadSaturn_KeyboardMouse(d); break;
 		default: PadSaturn_Buttons(&d[port], controller); break;
+	}
+
+	/* the pointer only where nothing else shows where A goes */
+	if (controller == CONTROLLER_KEYBOARD_MOUSE) {
+		PadSaturn_SetPointer(true);
+		PadSaturn_SetReticle(0, 0, 0, 0);
+	} else if (!s_cameraActive && !(s_focusActive && saturn_timer_frames() - s_handledFrame <= FOCUS_STALE)) {
+		PadSaturn_SetPointer(true);
+		PadSaturn_SetReticle(0, 0, 0, 0);
+	} else {
+		PadSaturn_SetPointer(false);
 	}
 }
 
@@ -545,8 +627,8 @@ static bool PadSaturn_MoveFocus(Widget *list, uint16 direction)
 	return any;
 }
 
-/* Whether the cursor is on a widget the focus can go to. */
-static bool PadSaturn_OnFocusable(Widget *list)
+/* The widget under the cursor the focus can go to, or NULL. */
+static Widget *PadSaturn_Focused(Widget *list)
 {
 	Widget *w;
 
@@ -554,9 +636,23 @@ static bool PadSaturn_OnFocusable(Widget *list)
 		int x, y;
 		if (!PadSaturn_Focusable(w)) continue;
 		PadSaturn_WidgetPosition(w, &x, &y);
-		if (s_x >= x && s_x < x + w->width && s_y >= y && s_y < y + w->height) return true;
+		if (s_x >= x && s_x < x + w->width && s_y >= y && s_y < y + w->height) return w;
 	}
-	return false;
+	return NULL;
+}
+
+/* Put the reticle on the focused widget. */
+static void PadSaturn_ReticleOnFocus(Widget *list)
+{
+	Widget *w = PadSaturn_Focused(list);
+	int x, y;
+
+	if (w == NULL) {
+		PadSaturn_SetReticle(0, 0, 0, 0);
+		return;
+	}
+	PadSaturn_WidgetPosition(w, &x, &y);
+	PadSaturn_SetReticle(x, y, w->width, w->height);
 }
 
 /* Scroll the camera from the D-pad or the stick, the cursor in the middle. */
@@ -588,6 +684,7 @@ static void PadSaturn_Camera(void)
 	}
 
 	if (s_x != CAMERA_X || s_y != CAMERA_Y) PadSaturn_SetPosition(CAMERA_X, CAMERA_Y);
+	PadSaturn_SetReticle(CAMERA_X - 8, CAMERA_Y - 8, 16, 16);
 }
 
 /* Pause, with a message, until a controller is connected. */
@@ -651,11 +748,12 @@ void PadSaturn_HandleEvents(Widget *list)
 	}
 	s_stickX = s_stickY = 0;
 
-	if (list != lastList || !PadSaturn_OnFocusable(list)) {
+	if (list != lastList || PadSaturn_Focused(list) == NULL) {
 		s_focusActive = PadSaturn_MoveFocus(list, NO_DIRECTION);
 		lastList = list;
 	}
 	if (direction != NO_DIRECTION) s_focusActive = PadSaturn_MoveFocus(list, direction);
+	PadSaturn_ReticleOnFocus(list);
 }
 
 void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeight, uint16 lines, uint16 current)
@@ -679,6 +777,7 @@ void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeig
 	cpu_interrupts_restore(sr);
 	s_focusActive = true;
 	s_cameraActive = false;
+	PadSaturn_SetReticle(0, 0, 0, 0);       /* the focused line changes colour */
 
 	/* the line the cursor is on, or the menu's own choice when it's elsewhere */
 	if (top != lastTop || s_x < left || s_x > right || s_y < top || s_y >= top + lines * lineHeight) {

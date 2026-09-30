@@ -41,6 +41,9 @@
 #include "../string.h"
 #include "../structure.h"
 #include "../table/strings.h"
+#if defined(SATURN)
+#include "../input/pad_saturn.h"
+#endif
 #include "../tile.h"
 #include "../timer.h"
 #include "../tools.h"
@@ -3960,6 +3963,11 @@ void GUI_Mouse_Show(void)
 		GFX_CopyToBuffer(s_mouseSpriteLeft * 8, s_mouseSpriteTop, s_mouseSpriteWidth * 8, s_mouseSpriteHeight, g_mouseSpriteBuffer);
 	}
 
+#if defined(SATURN)
+	/* with a pad the focus has a reticle instead (what's under is saved all
+	 * the same, so hiding still puts it back) */
+	if (!PadSaturn_PointerVisible()) return;
+#endif
 	GUI_DrawSprite(SCREEN_0, g_mouseSprite, left, top, 0, 0);
 }
 

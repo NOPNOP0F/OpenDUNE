@@ -20,6 +20,9 @@ extern void PadSaturn_HandleEvents(struct Widget *list);
  * focus moves between the lines, from left, top to right, of lineHeight. */
 extern void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeight, uint16 lines, uint16 current);
 
+/* Whether to draw the mouse pointer (not where a reticle shows the focus). */
+extern bool PadSaturn_PointerVisible(void);
+
 /* Whether any controller is connected. */
 extern bool PadSaturn_Connected(void);
 
