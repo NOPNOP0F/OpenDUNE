@@ -61,6 +61,8 @@ static GfsDirName s_dirNames[DIR_MAX];
 static GfsDirTbl s_dirTable;
 static int32_t s_dirCount;
 
+/* The sectors last read, kept when their file is closed: files on the disc
+ * don't change, and the game reopens a file (a PAK) for each read. */
 static uint8_t *s_cache;
 static int32_t s_cacheFid = -1;
 static uint32_t s_cacheFirst;       /* first sector held */
@@ -243,10 +245,7 @@ int _close(int fd)
 		errno = EBADF;
 		return -1;
 	}
-	if (f->kind == FD_CD) {
-		if (s_cacheFid == f->fid) s_cacheFid = -1;
-		GFS_Close(f->gfs);
-	}
+	if (f->kind == FD_CD) GFS_Close(f->gfs);
 	f->kind = FD_FREE;
 	return 0;
 }
