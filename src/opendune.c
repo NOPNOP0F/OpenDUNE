@@ -1343,11 +1343,17 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+#if defined(SATURN)
+	/* dune.cfg only holds the drivers and the language, fixed on the Saturn:
+	 * not worth backup memory (nor a failed start when it is full) */
+	Config_Default(&g_config);
+#else
 	/* Loading config from dune.cfg */
 	if (!Config_Read("dune.cfg", &g_config)) {
 		Config_Default(&g_config);
 		commit_dune_cfg = true;
 	}
+#endif
 	/* reading config from opendune.ini which prevail over dune.cfg */
 	SetLanguage_From_IniFile(&g_config);
 
