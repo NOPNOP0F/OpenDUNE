@@ -87,6 +87,10 @@ enum {
 	CAMERA_Y = 40 + 5 * 16 + 8,
 	/* the 320x200 picture is centred in the 224 lines shown (video_saturn.c) */
 	OVERLAY_TOP = (VDP2_DISPLAY_H - SCREEN_HEIGHT) / 2,
+	/* where the cursor waits while the focus is on the Mentat's list: the
+	 * left edge, where the Mentat screen has no widget */
+	LIST_PARK_X = 0,
+	LIST_PARK_Y = 100,
 
 	NO_DIRECTION = 0xFFFF
 };
@@ -759,6 +763,8 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 	}
 	if (s_focus == NULL || s_focus->clickProc != &GUI_Mentat_List_Click) return false;
 
+	if (s_x != LIST_PARK_X || s_y != LIST_PARK_Y) PadSaturn_SetPosition(LIST_PARK_X, LIST_PARK_Y);
+
 	/* on a heading: on to the nearest subject, the way it was going */
 	if (line != NULL && line->stringID == 0x30) {
 		if (first) lastMove = 4;
@@ -787,14 +793,11 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 	}
 	*direction = NO_DIRECTION;
 
-	/* the focus is the selected line (which moves when the list takes the key) */
+	/* the focus is the selected line (drawn red by the list); the cursor
+	 * waits off the list: a line under it takes the keys meant for the list
+	 * (it counts hovering as a click) */
 	s_focus = line;
-	if (line != NULL) {
-		PadSaturn_WidgetPosition(line, &x, &y);
-		if (s_x != x + line->width / 2 || s_y != y + line->height / 2) {
-			PadSaturn_SetPosition((uint16)(x + line->width / 2), (uint16)(y + line->height / 2));
-		}
-	}
+	if (s_x != LIST_PARK_X || s_y != LIST_PARK_Y) PadSaturn_SetPosition(LIST_PARK_X, LIST_PARK_Y);
 	return true;
 }
 
