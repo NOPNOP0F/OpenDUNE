@@ -204,10 +204,15 @@ static void PadSaturn_Blip(void)
 	if (g_gameConfig.sounds != 0) DSP_Saturn_Blip(DSP_BLIP_FOCUS);
 }
 
-/* The sound of pressing A on what is focused. */
+static uint32 s_secondNoteFrame = 0;    /* when the use sound's second note is due, or 0 */
+
+/* The sound of pressing A on what is focused: a low note, then the focus
+ * note (played by PadSaturn_Tick()). */
 static void PadSaturn_UseSound(void)
 {
-	if (g_gameConfig.sounds != 0) DSP_Saturn_Blip(DSP_BLIP_USE);
+	if (g_gameConfig.sounds == 0) return;
+	DSP_Saturn_Blip(DSP_BLIP_USE);
+	s_secondNoteFrame = saturn_timer_frames() + 4;
 }
 
 static void PadSaturn_KeyTap(uint8 scancode)
@@ -587,6 +592,11 @@ void PadSaturn_Tick(void)
 		case CONTROLLER_NONE: break;
 		case CONTROLLER_KEYBOARD_MOUSE: PadSaturn_KeyboardMouse(d); break;
 		default: PadSaturn_Buttons(&d[port], controller); break;
+	}
+
+	if (s_secondNoteFrame != 0 && saturn_timer_frames() >= s_secondNoteFrame) {
+		s_secondNoteFrame = 0;
+		DSP_Saturn_Blip(DSP_BLIP_FOCUS);
 	}
 
 	/* the pointer only with a mouse; the reticle only while the focus or
