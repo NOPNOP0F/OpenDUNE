@@ -701,21 +701,22 @@ static Widget *PadSaturn_MoveFocus(Widget *list, uint16 direction)
 	return best;
 }
 
-/* The Mentat's list of subjects keeps its own selection: the focus follows
- * it (the cursor on the selected line makes it red), up and down move it
- * with the keys the list takes (scrolling at the ends), down from the last
- * subject goes to Exit, and B presses Exit. Returns true while the focus is
- * on the list (direction is then used up). */
+/* The Mentat's list of subjects keeps its own selection (drawn red): the
+ * focus follows it, up and down move it with the keys the list takes
+ * (scrolling at the ends) and skip the section headings (blue, stringID
+ * 0x30), down from the last subject goes to Exit, and B clicks Exit.
+ * Returns true while the focus is on the list (direction is then used up). */
 static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 {
+	static uint16 lastMove = 4;
 	Widget *line, *exitButton = NULL, *w;
-	bool first, last, onList = false, hasList = false, pressB;
+	bool first, last, hasList = false, pressB;
 	uint32 sr;
 	int x, y;
 
 	for (w = list; w != NULL; w = GUI_Widget_GetNext(w)) {
 		if (w->clickProc == &GUI_Mentat_List_Click) hasList = true;
-		if (w->index == 1 && w == g_widgetMentatFirst) exitButton = w;
+		if (w == g_widgetMentatFirst) exitButton = w;
 	}
 	if (!hasList) return false;
 
@@ -723,15 +724,36 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 	pressB = s_pressB;
 	s_pressB = false;
 	cpu_interrupts_restore(sr);
-	if (fresh) pressB = false;
-	if (pressB && exitButton != NULL && exitButton->shortcut != 0) Input_HandleInput(exitButton->shortcut);
+	if (pressB && !fresh && exitButton != NULL) {
+		/* B: a click on Exit, as A there would */
+		PadSaturn_WidgetPosition(exitButton, &x, &y);
+		s_focus = exitButton;
+		PadSaturn_SetPosition((uint16)(x + exitButton->width / 2), (uint16)(y + exitButton->height / 2));
+		Mouse_EventHandler((uint16)s_x, (uint16)s_y, true, false);
+		Mouse_EventHandler((uint16)s_x, (uint16)s_y, false, false);
+		*direction = NO_DIRECTION;
+		return false;
+	}
 
 	line = GUI_Widget_Get_ByIndex(list, GUI_Mentat_HelpSelection(&first, &last));
-	if (fresh || s_focus == NULL) s_focus = line;       /* entering: the selected subject */
-	if (s_focus != NULL && s_focus->clickProc == &GUI_Mentat_List_Click) onList = true;
-	if (!onList) return false;
+	if (fresh || s_focus == NULL) {
+		s_focus = line;         /* entering: the selected subject */
+		lastMove = 4;
+	}
+	if (s_focus == NULL || s_focus->clickProc != &GUI_Mentat_List_Click) return false;
+
+	/* on a heading: on to the nearest subject, the way it was going */
+	if (line != NULL && line->stringID == 0x30) {
+		if (first) lastMove = 4;
+		if (last) lastMove = 0;
+		Input_HandleInput(lastMove == 0 ? KEY_ARROW_UP : KEY_ARROW_DOWN);
+		*direction = NO_DIRECTION;
+		s_focus = line;
+		return true;
+	}
 
 	if (*direction == 0 && !first) {
+		lastMove = 0;
 		Input_HandleInput(KEY_ARROW_UP);
 		PadSaturn_Blip();
 	} else if (*direction == 4 && last && exitButton != NULL) {
@@ -742,12 +764,13 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 		*direction = NO_DIRECTION;
 		return false;
 	} else if (*direction == 4) {
+		lastMove = 4;
 		Input_HandleInput(KEY_ARROW_DOWN);
 		PadSaturn_Blip();
 	}
 	*direction = NO_DIRECTION;
 
-	/* follow the selection (it moves when the list takes the key) */
+	/* the focus is the selected line (which moves when the list takes the key) */
 	s_focus = line;
 	if (line != NULL) {
 		PadSaturn_WidgetPosition(line, &x, &y);
