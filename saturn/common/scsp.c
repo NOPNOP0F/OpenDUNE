@@ -15,6 +15,7 @@
 #define SCSP_MCIEB      REG16(0x25B0042AUL)     /* main CPU interrupt enable */
 #define SCSP_MCIPD      REG16(0x25B0042CUL)     /* main CPU interrupt pending */
 #define SCSP_MCIRE      REG16(0x25B0042EUL)     /* main CPU interrupt reset */
+#define SCSP_DSP_MPRO   ((volatile uint16_t *)0x25B00800UL)     /* DSP program, 4 words a step */
 
 enum {
 	SMPC_CMD_SNDOFF = 0x07,
@@ -24,6 +25,7 @@ enum {
 	/* timer A counts at 44.1 kHz and interrupts at 0xFF: 44 counts = 1 ms */
 	TIMER_A_VALUE = (0 << 8) | (255 - 44),
 	SLOT_COUNT = 32,
+	DSP_STEPS = 128,
 	BLOCK_MAX = 128,
 	OUTPUT_RATE = 44100
 };
@@ -46,7 +48,7 @@ static int s_initialised;
 
 void scsp_init(void)
 {
-	int slot;
+	int slot, i;
 
 	if (s_initialised) return;
 	s_initialised = 1;
@@ -57,10 +59,15 @@ void scsp_init(void)
 	SCSP_COMMON = (1 << 9) | 0xF;
 
 	for (slot = 0; slot < SLOT_COUNT; slot++) {
-		SCSP_SLOT(slot, 0x00) = 0;
-		SCSP_SLOT(slot, 0x16) = 0;
+		int reg;
+		for (reg = 0; reg < 0x18; reg += 2) SCSP_SLOT(slot, reg) = 0;
 	}
 	SCSP_SLOT(0, 0x00) = KEY_ON_EXECUTE;
+
+	/* The BIOS's sound driver leaves its DSP program running, and the DSP
+	 * writes its ring buffer into sound RAM, over voices; clear the program
+	 * (the steps' MWT bits) so it writes nothing. */
+	for (i = 0; i < DSP_STEPS * 4; i++) SCSP_DSP_MPRO[i] = 0;
 
 	/* CD audio (EXTS0/1, set through slots 16/17): full level, left/right */
 	SCSP_SLOT(16, 0x16) = (7 << 5) | 0x1F;
