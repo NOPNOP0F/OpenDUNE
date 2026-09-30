@@ -19,6 +19,7 @@
 
 #include "backup.h"
 #include "files.h"
+#include "loading.h"
 
 #undef errno
 extern int errno;
@@ -76,12 +77,85 @@ static int32_t s_cacheFid = -1;
 static uint32_t s_cacheFirst;       /* first sector held */
 static uint32_t s_cacheCount;       /* sectors held */
 
+/* Sectors read before, kept in VDP1's 512 KB of VRAM, which nothing else
+ * uses (the picture is VDP2's): reading them again (tiles, scripts, the
+ * Mentat's pictures, menus) then takes no CD seek. Slot i is at VRAM
+ * (i + 1) * 2048; the first 2048 bytes keep an end-of-list command, so
+ * VDP1 never takes the cached data for drawing commands. */
+enum { VRAM_SLOTS = 255 };
+#define VDP1_VRAM   0x25C00000UL
+#define VDP1_PTMR   (*(volatile uint16_t *)0x25D00004UL)
+
+typedef struct VramSlot {
+	int32_t fid;            /* -1: free */
+	uint32_t sector;
+	uint32_t used;          /* when last used, for replacing the oldest */
+} VramSlot;
+
+static VramSlot s_vram[VRAM_SLOTS];
+static uint32_t s_vramClock = 0;
+
+static volatile uint32_t *vram_slot(int i)
+{
+	return (volatile uint32_t *)(VDP1_VRAM + (uint32_t)(i + 1) * SECTOR_SIZE);
+}
+
+static void vram_init(void)
+{
+	int i;
+	VDP1_PTMR = 0;                                  /* no drawing */
+	*(volatile uint16_t *)VDP1_VRAM = 0x8000;       /* end of command list */
+	for (i = 0; i < VRAM_SLOTS; i++) s_vram[i].fid = -1;
+}
+
+static int vram_find(int32_t fid, uint32_t sector)
+{
+	int i;
+	for (i = 0; i < VRAM_SLOTS; i++) {
+		if (s_vram[i].fid == fid && s_vram[i].sector == sector) {
+			s_vram[i].used = ++s_vramClock;
+			return i;
+		}
+	}
+	return -1;
+}
+
+static void vram_store(int32_t fid, uint32_t sector, const uint8_t *data)
+{
+	volatile uint32_t *dst;
+	const uint32_t *src = (const uint32_t *)data;
+	int i, oldest = 0;
+
+	if (vram_find(fid, sector) >= 0) return;
+	for (i = 0; i < VRAM_SLOTS; i++) {
+		if (s_vram[i].fid < 0) {
+			oldest = i;
+			break;
+		}
+		if (s_vram[i].used < s_vram[oldest].used) oldest = i;
+	}
+	dst = vram_slot(oldest);
+	for (i = 0; i < SECTOR_SIZE / 4; i++) dst[i] = src[i];
+	s_vram[oldest].fid = fid;
+	s_vram[oldest].sector = sector;
+	s_vram[oldest].used = ++s_vramClock;
+}
+
+static void vram_load(int slot, uint8_t *data)
+{
+	volatile uint32_t *src = vram_slot(slot);
+	uint32_t *dst = (uint32_t *)data;
+	int i;
+	for (i = 0; i < SECTOR_SIZE / 4; i++) dst[i] = src[i];
+}
+
 static bool cd_init(void)
 {
 	if (s_cdReady) return true;
 
 	s_cache = malloc(CACHE_SECTORS * SECTOR_SIZE);
 	if (s_cache == NULL) return false;
+	vram_init();
 
 	GFS_DIRTBL_TYPE(&s_dirTable) = GFS_DIR_NAME;
 	GFS_DIRTBL_DIRNAME(&s_dirTable) = s_dirNames;
@@ -348,18 +422,34 @@ static int cd_read(Fd *f, uint8_t *buffer, uint32_t length)
 		uint32_t offset, chunk;
 
 		if (s_cacheFid != f->fid || sector < s_cacheFirst || sector >= s_cacheFirst + s_cacheCount) {
-			uint32_t fileSectors = (f->size + SECTOR_SIZE - 1) / SECTOR_SIZE;
-			uint32_t count = fileSectors - sector;
-			int32_t got;
+			int slot = vram_find(f->fid, sector);
 
-			if (count > CACHE_SECTORS) count = CACHE_SECTORS;
-			s_cacheFid = -1;
-			if (GFS_Seek(f->gfs, (Sint32)sector, GFS_SEEK_SET) < 0) break;
-			got = GFS_Fread(f->gfs, (Sint32)count, s_cache, (Sint32)(count * SECTOR_SIZE));
-			if (got <= 0) break;
-			s_cacheFid = f->fid;
-			s_cacheFirst = sector;
-			s_cacheCount = ((uint32_t)got + SECTOR_SIZE - 1) / SECTOR_SIZE;
+			if (slot >= 0) {
+				/* read before: from VDP1's VRAM */
+				vram_load(slot, s_cache);
+				s_cacheFid = f->fid;
+				s_cacheFirst = sector;
+				s_cacheCount = 1;
+			} else {
+				uint32_t fileSectors = (f->size + SECTOR_SIZE - 1) / SECTOR_SIZE;
+				uint32_t count = fileSectors - sector, i;
+				int32_t got;
+
+				if (count > CACHE_SECTORS) count = CACHE_SECTORS;
+				s_cacheFid = -1;
+				loading_disc(1);
+				if (GFS_Seek(f->gfs, (Sint32)sector, GFS_SEEK_SET) < 0) {
+					loading_disc(0);
+					break;
+				}
+				got = GFS_Fread(f->gfs, (Sint32)count, s_cache, (Sint32)(count * SECTOR_SIZE));
+				loading_disc(0);
+				if (got <= 0) break;
+				s_cacheFid = f->fid;
+				s_cacheFirst = sector;
+				s_cacheCount = ((uint32_t)got + SECTOR_SIZE - 1) / SECTOR_SIZE;
+				for (i = 0; i < s_cacheCount; i++) vram_store(f->fid, sector + i, s_cache + i * SECTOR_SIZE);
+			}
 		}
 
 		offset = f->position - s_cacheFirst * SECTOR_SIZE;
