@@ -3222,6 +3222,28 @@ static uint16 GUI_StrategicMap_ScenarioSelection(uint16 campaignID)
 	Input_History_Clear();
 
 	for (loop = true; loop; sleepIdle()) {
+#if defined(SATURN)
+		{
+			/* with a pad: the focus goes from region to region */
+			int16 x[20], y[20];
+			bool usable[20];
+			int pick;
+
+			for (i = 0; i < count; i++) {
+				x[i] = data[i].offsetX;
+				y[i] = data[i].offsetY;
+				usable[i] = data[i].index != 0;
+			}
+			pick = PadSaturn_PickRegion(x, y, usable, count);
+			if (pick >= 0) {
+				Input_History_Clear();
+				region = data[pick].index;
+				scenarioID = pick;
+				loop = false;
+				continue;
+			}
+		}
+#endif
 		region = GUI_StrategicMap_ClickedRegion();
 
 		if (region == 0) continue;

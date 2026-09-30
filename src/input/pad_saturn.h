@@ -20,6 +20,10 @@ extern void PadSaturn_HandleEvents(struct Widget *list);
  * focus moves between the lines, from left, top to right, of lineHeight. */
 extern void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeight, uint16 lines, uint16 current);
 
+/* The campaign map: move the focus between the regions to choose, at x, y
+ * (16 x 16 each, usable or not); returns the one picked with A, or -1. */
+extern int PadSaturn_PickRegion(const int16 *x, const int16 *y, const bool *usable, int count);
+
 /* Whether to draw the mouse pointer (not where a reticle shows the focus). */
 extern bool PadSaturn_PointerVisible(void);
 

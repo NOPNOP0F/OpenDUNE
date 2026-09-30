@@ -6,13 +6,13 @@
  * none, the game pauses with a message until one is connected.
  *
  * Standard pad (after the Mega Drive version):
- *   D-pad        UI mode: moves the focus between the buttons of the screen;
+ *   D-pad        UI mode: moves the focus between the buttons of the screen
+ *                (on the campaign map, between the regions to choose);
  *                camera mode (missions): scrolls the map under a cursor
- *                fixed in the middle of the map view. Screens without
- *                buttons (the campaign map) get a free cursor.
- *   C            in missions, switches between UI and camera mode; elsewhere
- *                speeds up the free cursor. Targeting and placing a
- *                structure use the camera whatever the mode.
+ *                fixed in the middle of the map view.
+ *   C            in missions, a tap switches between UI and camera mode.
+ *                Targeting and placing a structure use the camera whatever
+ *                the mode.
  *   A            left mouse button (press the focused button, select,
  *                target, place; hold to drag)
  *   B            cancel (Esc)
@@ -30,10 +30,10 @@
  *   as they are; the arrows work as the D-pad, Space as A and Tab as C.
  * Keyboard and mouse: as on DOS.
  *
- * With the pad-like controllers the mouse pointer is hidden but where the
- * cursor moves freely: the focused button gets a reticle, drawn on the
- * VDP2 overlay (the menu lines change colour instead), and so does the
- * centre tile of the camera.
+ * The mouse pointer is only drawn with a mouse. With the pad-like
+ * controllers the focused button gets a reticle, drawn on the VDP2 overlay and gliding from one button to the
+ * next (lines of menus and lists change colour instead), and so does the
+ * centre tile of the camera. Moving the focus makes a blip.
  *
  * Mouse and key events go to the engine from Video_Tick, as other video
  * drivers deliver them. Moving the focus and the camera needs the game's
@@ -49,7 +49,9 @@
 #include "mouse.h"
 #include "pad_saturn.h"
 #include "../gfx.h"
+#include "../audio/driver.h"
 #include "../gui/gui.h"
+#include "../gui/mentat.h"
 #include "../gui/widget.h"
 #include "../house.h"
 #include "../map.h"
@@ -69,10 +71,6 @@
 #include "vdp2.h"
 
 enum {
-	SPEED_SLOW = 1,             /* free cursor, pixels per frame */
-	SPEED_MEDIUM = 3,
-	SPEED_FAST = 6,
-	FAST_AFTER_FRAMES = 60,
 	TAP_FRAMES = 15,            /* a press this short is a tap, not a hold */
 	REPEAT_FIRST = 18,          /* D-pad repeat for the focus, in frames */
 	REPEAT_NEXT = 5,
@@ -88,6 +86,7 @@ enum {
 	CAMERA_Y = 40 + 5 * 16 + 8,
 	/* the 320x200 picture is centred in the 224 lines shown (video_saturn.c) */
 	OVERLAY_TOP = (VDP2_DISPLAY_H - SCREEN_HEIGHT) / 2,
+	SOUND_FOCUS = 38,           /* the blip of the end of mission score counters */
 	NO_DIRECTION = 0xFFFF
 };
 
@@ -130,7 +129,6 @@ static int s_minY = 0, s_maxY = SCREEN_HEIGHT - 1;
 static bool s_positionChanged = true;
 static uint16 s_previous = 0;           /* buttons of the last frame */
 static bool s_leftButton, s_rightButton;
-static int s_fastFrames = 0;
 static int s_repeatFrames = 0;
 static int s_lTapFrames = -1;           /* frames L has been held, -1: not a tap */
 static int s_cTapFrames = -1;           /* the same for C */
@@ -144,6 +142,7 @@ static volatile uint16 s_scroll = NO_DIRECTION;     /* scroll the camera */
 static volatile int s_stickX = 0, s_stickY = 0;     /* stick travel summed up */
 static volatile bool s_toggleCamera = false;
 static volatile bool s_stickLast = false;           /* 3D Controller: stick used last */
+static volatile bool s_pressA = false;              /* A pressed (for PadSaturn_PickRegion()) */
 static enum { CYCLE_NONE, CYCLE_UNIT, CYCLE_STRUCTURE } s_cycle = CYCLE_NONE;
 
 /* what PadSaturn_HandleEvents() found */
@@ -153,7 +152,9 @@ static volatile bool s_focusActive = false;         /* the screen has buttons to
 static volatile uint32 s_handledFrame = 0;
 
 static bool s_pointerVisible = true;                /* the mouse pointer is drawn */
-static int s_reticleX, s_reticleY, s_reticleW = 0, s_reticleH = 0;  /* on the overlay */
+typedef struct Rect { int x, y, w, h; } Rect;       /* w 0: none */
+static Rect s_reticle = { 0, 0, 0, 0 };             /* where the reticle goes */
+static Rect s_reticleDrawn = { 0, 0, 0, 0 };        /* where it is on the overlay */
 
 void PadSaturn_Init(void)
 {
@@ -332,8 +333,6 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 {
 	uint16 pad = d->buttons;
 	uint16 pressed, released;
-	bool focus = s_focusActive && saturn_timer_frames() - s_handledFrame <= FOCUS_STALE;
-	bool freeCursor = !focus && !s_cameraActive;
 
 	if (controller == CONTROLLER_KEYBOARD) {
 		/* the arrows come as the pad bits; Space and Tab stand for A and C;
@@ -349,43 +348,29 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 
 	if (controller != CONTROLLER_KEYBOARD && (pad & PAD_RESET) == PAD_RESET) BIOS_EXECDMP();
 
-	/* the D-pad: the free cursor, or requests for the focus and camera */
+	if (pressed & PAD_A) s_pressA = true;
+
+	/* the D-pad: requests for the focus and camera, repeating when held */
 	if (pad & PAD_DIRECTIONS) {
 		bool repeat;
 
 		if (pressed & PAD_DIRECTIONS) s_repeatFrames = 0;
 		if (s_cameraActive && controller != CONTROLLER_3D) {
-			repeat = s_repeatFrames == 0 || (s_repeatFrames >= SCROLL_FIRST && (s_repeatFrames - SCROLL_FIRST) % SCROLL_NEXT == 0);
+			repeat = s_repeatFrames == 0 ||
+				(s_repeatFrames >= SCROLL_FIRST && (s_repeatFrames - SCROLL_FIRST) % SCROLL_NEXT == 0);
 		} else {
 			repeat = s_repeatFrames == 0 || (s_repeatFrames >= REPEAT_FIRST && (s_repeatFrames - REPEAT_FIRST) % REPEAT_NEXT == 0);
 		}
 		s_repeatFrames++;
 		if (controller == CONTROLLER_3D) s_stickLast = false;
 
-		if (freeCursor) {
-			int speed = SPEED_SLOW;
-
-			if (pad & PAD_C) {
-				speed = (s_fastFrames >= FAST_AFTER_FRAMES) ? SPEED_FAST : SPEED_MEDIUM;
-				s_fastFrames++;
-			} else {
-				s_fastFrames = 0;
-			}
-			if (pad & PAD_LEFT)  s_x -= speed;
-			if (pad & PAD_RIGHT) s_x += speed;
-			if (pad & PAD_UP)    s_y -= speed;
-			if (pad & PAD_DOWN)  s_y += speed;
-			PadSaturn_Clamp();
-			s_positionChanged = true;
-		} else if (repeat) {
+		if (repeat) {
 			if (s_cameraActive && controller != CONTROLLER_3D) s_scroll = PadSaturn_Direction(pad);
 			else s_navigate = PadSaturn_Direction(pad);
 		}
-	} else {
-		s_fastFrames = 0;
 	}
 
-	/* the 3D Controller's stick: the camera, or the free cursor */
+	/* the 3D Controller's stick: the camera */
 	if (controller == CONTROLLER_3D) {
 		int sx = (int)d->analog[0] - 128, sy = (int)d->analog[1] - 128;
 
@@ -393,15 +378,8 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 		if (abs(sy) < STICK_DEAD) sy = 0;
 		if (sx != 0 || sy != 0) {
 			s_stickLast = true;
-			if (freeCursor) {
-				s_x += sx / 16;
-				s_y += sy / 16;
-				PadSaturn_Clamp();
-				s_positionChanged = true;
-			} else {
-				s_stickX += sx;
-				s_stickY += sy;
-			}
+			s_stickX += sx;
+			s_stickY += sy;
 		}
 	}
 
@@ -484,16 +462,43 @@ static void PadSaturn_Brackets(int x, int y, int w, int h, int light, int dark)
 	}
 }
 
-/* Show the reticle round a rectangle (none for a width of 0). */
+/* Put the reticle round a rectangle (none for a width of 0); it glides
+ * there in PadSaturn_ReticleTick(). */
 static void PadSaturn_SetReticle(int x, int y, int w, int h)
 {
-	if (x == s_reticleX && y == s_reticleY && w == s_reticleW && h == s_reticleH) return;
-	if (s_reticleW > 0) PadSaturn_Brackets(s_reticleX, s_reticleY, s_reticleW, s_reticleH, VDP2_OVERLAY_CLEAR, VDP2_OVERLAY_CLEAR);
-	s_reticleX = x;
-	s_reticleY = y;
-	s_reticleW = w;
-	s_reticleH = h;
-	if (w > 0) PadSaturn_Brackets(x, y, w, h, VDP2_OVERLAY_LIGHT, VDP2_OVERLAY_DARK);
+	s_reticle.x = x;
+	s_reticle.y = y;
+	s_reticle.w = w;
+	s_reticle.h = h;
+}
+
+/* A step of a value towards its target: half the way, at least 1. */
+static int PadSaturn_Step(int from, int to)
+{
+	int d = to - from;
+	if (d == 0) return to;
+	return from + ((d > 0) ? (d + 1) / 2 : (d - 1) / 2);
+}
+
+/* Once a frame: move the reticle drawn on the overlay towards its place. */
+static void PadSaturn_ReticleTick(void)
+{
+	Rect next;
+
+	if (s_reticleDrawn.w == s_reticle.w && s_reticleDrawn.h == s_reticle.h &&
+			s_reticleDrawn.x == s_reticle.x && s_reticleDrawn.y == s_reticle.y) return;
+
+	if (s_reticle.w == 0 || s_reticleDrawn.w == 0) {
+		next = s_reticle;       /* appears or goes at once */
+	} else {
+		next.x = PadSaturn_Step(s_reticleDrawn.x, s_reticle.x);
+		next.y = PadSaturn_Step(s_reticleDrawn.y, s_reticle.y);
+		next.w = PadSaturn_Step(s_reticleDrawn.w, s_reticle.w);
+		next.h = PadSaturn_Step(s_reticleDrawn.h, s_reticle.h);
+	}
+	if (s_reticleDrawn.w > 0) PadSaturn_Brackets(s_reticleDrawn.x, s_reticleDrawn.y, s_reticleDrawn.w, s_reticleDrawn.h, VDP2_OVERLAY_CLEAR, VDP2_OVERLAY_CLEAR);
+	if (next.w > 0) PadSaturn_Brackets(next.x, next.y, next.w, next.h, VDP2_OVERLAY_LIGHT, VDP2_OVERLAY_DARK);
+	s_reticleDrawn = next;
 }
 
 /* Draw the mouse pointer or not, redrawing it if it is on show. */
@@ -543,16 +548,13 @@ void PadSaturn_Tick(void)
 		default: PadSaturn_Buttons(&d[port], controller); break;
 	}
 
-	/* the pointer only where nothing else shows where A goes */
-	if (controller == CONTROLLER_KEYBOARD_MOUSE) {
-		PadSaturn_SetPointer(true);
+	/* the pointer only with a mouse; the reticle only while the focus or
+	 * the camera is being looked after */
+	PadSaturn_SetPointer(controller == CONTROLLER_KEYBOARD_MOUSE);
+	if (controller == CONTROLLER_KEYBOARD_MOUSE || saturn_timer_frames() - s_handledFrame > FOCUS_STALE) {
 		PadSaturn_SetReticle(0, 0, 0, 0);
-	} else if (!s_cameraActive && !(s_focusActive && saturn_timer_frames() - s_handledFrame <= FOCUS_STALE)) {
-		PadSaturn_SetPointer(true);
-		PadSaturn_SetReticle(0, 0, 0, 0);
-	} else {
-		PadSaturn_SetPointer(false);
 	}
+	PadSaturn_ReticleTick();
 }
 
 bool PadSaturn_Connected(void)
@@ -647,7 +649,8 @@ static void PadSaturn_ReticleOnFocus(Widget *list)
 	Widget *w = PadSaturn_Focused(list);
 	int x, y;
 
-	if (w == NULL) {
+	/* list lines (the Mentat's subjects) change colour instead */
+	if (w == NULL || w->clickProc == &GUI_Mentat_List_Click) {
 		PadSaturn_SetReticle(0, 0, 0, 0);
 		return;
 	}
@@ -752,7 +755,11 @@ void PadSaturn_HandleEvents(Widget *list)
 		s_focusActive = PadSaturn_MoveFocus(list, NO_DIRECTION);
 		lastList = list;
 	}
-	if (direction != NO_DIRECTION) s_focusActive = PadSaturn_MoveFocus(list, direction);
+	if (direction != NO_DIRECTION) {
+		Widget *before = PadSaturn_Focused(list);
+		s_focusActive = PadSaturn_MoveFocus(list, direction);
+		if (PadSaturn_Focused(list) != before) Driver_Sound_Play(SOUND_FOCUS, 0xFF);
+	}
 	PadSaturn_ReticleOnFocus(list);
 }
 
@@ -788,10 +795,72 @@ void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeig
 	}
 	if (direction == 0) line = (line == 0) ? lines - 1 : line - 1;
 	if (direction == 4) line = (line == lines - 1) ? 0 : line + 1;
+	if (direction == 0 || direction == 4) Driver_Sound_Play(SOUND_FOCUS, 0xFF);
 
 	if (s_x != (left + right) / 2 || s_y != top + line * lineHeight + lineHeight / 2) {
 		PadSaturn_SetPosition((left + right) / 2, (uint16)(top + line * lineHeight + lineHeight / 2));
 	}
+}
+
+int PadSaturn_PickRegion(const int16 *x, const int16 *y, const bool *usable, int count)
+{
+	static const int dirX[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
+	static const int dirY[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
+	static int focus = -1;
+	uint16 direction;
+	bool pressA;
+	uint32 sr;
+	int i;
+
+	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
+	if (saturn_timer_frames() - s_handledFrame > FOCUS_STALE) focus = -1;   /* a new map */
+	s_handledFrame = saturn_timer_frames();
+	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE) return -1;
+
+	sr = cpu_interrupts_disable();
+	direction = s_navigate;
+	s_navigate = NO_DIRECTION;
+	pressA = s_pressA;
+	s_pressA = false;
+	s_toggleCamera = false;
+	cpu_interrupts_restore(sr);
+	s_focusActive = true;
+	s_cameraActive = false;
+
+	if (focus < 0 || focus >= count || !usable[focus]) {
+		for (focus = 0; focus < count && !usable[focus]; focus++) {}
+		if (focus == count) {
+			focus = -1;
+			return -1;
+		}
+		pressA = false;         /* the press that opened the map */
+	}
+
+	if (direction != NO_DIRECTION) {
+		/* the nearest region ahead, better lined up counting more */
+		int best = -1;
+		long bestScore = 0;
+
+		for (i = 0; i < count; i++) {
+			long dx = x[i] - x[focus], dy = y[i] - y[focus], along, across, score;
+			if (i == focus || !usable[i]) continue;
+			along = dx * dirX[direction] + dy * dirY[direction];
+			across = labs(dx * dirY[direction] - dy * dirX[direction]);
+			if (along <= 0) continue;
+			score = along + 3 * across;
+			if (best < 0 || score < bestScore) {
+				best = i;
+				bestScore = score;
+			}
+		}
+		if (best >= 0) {
+			focus = best;
+			Driver_Sound_Play(SOUND_FOCUS, 0xFF);
+		}
+	}
+
+	PadSaturn_SetReticle(x[focus], y[focus], 16, 16);
+	return pressA ? focus : -1;
 }
 
 /* The next of the player's objects after index (wrapping round), or NULL. */
