@@ -253,7 +253,9 @@ void *WSA_LoadFile(const char *filename, void *wsa, uint32 wsaSize, bool reserve
 		displaySize = fileheader.width * fileheader.height;
 	}
 
-	bufferSizeMinimal = displaySize + fileheader.requiredBufferSize - 33 + sizeof(WSAHeader);
+	/* the header and the buffer after it, bufferLength long (see below):
+	 * requiredBufferSize + 33 together, whatever the size of the header */
+	bufferSizeMinimal = displaySize + fileheader.requiredBufferSize + 33;
 	bufferSizeOptimal = bufferSizeMinimal + lengthFileContent;
 
 	if (wsaSize > 1 && wsaSize < bufferSizeMinimal) {
