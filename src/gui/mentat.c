@@ -988,6 +988,15 @@ static void GUI_Mentat_ShowHelp(void)
  *
  * @param w The widget.
  */
+#if defined(SATURN)
+uint16 GUI_Mentat_HelpSelection(bool *first, bool *last)
+{
+	*first = s_topHelpList + s_selectedHelpSubject == 0;
+	*last = s_topHelpList + s_selectedHelpSubject + 1 >= s_numberHelpSubjects;
+	return s_selectedHelpSubject + 3;
+}
+#endif
+
 bool GUI_Mentat_List_Click(Widget *w)
 {
 	uint16 index;
