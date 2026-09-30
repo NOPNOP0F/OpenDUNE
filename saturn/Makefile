@@ -10,14 +10,19 @@ TOOLCHAIN ?= $(CURDIR)/toolchain/install
 PREFIX    := $(TOOLCHAIN)/bin/sh-elf-
 CC        := $(PREFIX)gcc
 OBJCOPY   := $(PREFIX)objcopy
+AR        := $(PREFIX)ar
 
 SEGALIB   := ../SSSDK/SaturnBasicLibrary6/SEGALIB/LIB
 SRC       := ../src
 BUILD     := build
 
+# Dune II v1.07 data files; only the PAK archives go on the disc
+DATA      ?= ../bin/data
+
 CFLAGS    := -m2 -O2 -std=gnu11 -Wall -Wextra -Icommon
 LDFLAGS   := -m2 -nostartfiles -Wl,--no-warn-rwx-segments -T common/saturn.ld
-LIBS      := -lc -lgcc
+SBL_LIBS  := $(BUILD)/libsbl.a $(BUILD)/libcdc.a
+LIBS      := $(SBL_LIBS) -lc -lgcc
 
 SEGA_IP_OBJS := sys_sec sys_arej sys_aret sys_areu sys_aree sys_init
 
@@ -47,18 +52,65 @@ $(BUILD)/ip.elf: $(IP_OBJS) ip/ip.ld
 $(BUILD)/ip.bin: $(BUILD)/ip.elf
 	$(OBJCOPY) -O binary $< $@
 
+# --- SBL: file system (GFS) and what it needs ------------------------------
+
+# GFS, DMA and cache control are built from the SDK's C sources. The files
+# are copied first: lower-case names (the sources include them that way),
+# no CR line ends and no DOS end-of-file marker.
+SBL_SRC     := ../SSSDK/SaturnBasicLibrary6/SEGALIB
+SBL_MODULES := GFS DMA CSH
+SBL_GFS     := gfs gfs_buf gfs_cdb gfs_cdc gfs_cdf gfs_dir gfs_trn
+SBL_DMA     := dma_cpu0 dma_cpu1 dma_cpu2 dma_cpu3 dma_cpu4 dma_cpu5 dma_cpum dma_scu0 dma_scu1
+SBL_OBJS    := $(SBL_GFS:%=$(BUILD)/sbl/gfs/%.o) $(SBL_DMA:%=$(BUILD)/sbl/dma/%.o) \
+               $(BUILD)/sbl/csh/csh_main.o $(BUILD)/sbl/int_bios.o
+SBL_CFLAGS  := -m2 -O2 -std=gnu89 -w -D_SH -DMODEL_S -I$(BUILD)/sbl/inc
+
+$(BUILD)/sbl/.copied:
+	@mkdir -p $(BUILD)/sbl/inc
+	for f in $(SBL_SRC)/INCLUDE/*.H; do \
+		tr -d '\r\032' < $$f > $(BUILD)/sbl/inc/$$(basename $$f | tr A-Z a-z); done
+	for m in $(SBL_MODULES); do \
+		d=$(BUILD)/sbl/$$(echo $$m | tr A-Z a-z); mkdir -p $$d; \
+		for f in $(SBL_SRC)/$$m/*.C $(SBL_SRC)/$$m/*.H; do \
+			if [ -f $$f ]; then tr -d '\r\032' < $$f > $$d/$$(basename $$f | tr A-Z a-z); fi; done; done
+	touch $@
+
+$(BUILD)/sbl/%.o: $(BUILD)/sbl/.copied
+	$(CC) $(SBL_CFLAGS) -I$(@D) -c $(@:.o=.c) -o $@
+
+$(BUILD)/sbl/int_bios.o: sbl/int_bios.c $(BUILD)/sbl/.copied
+	$(CC) $(SBL_CFLAGS) -c $< -o $@
+
+$(BUILD)/libsbl.a: $(SBL_OBJS)
+	rm -f $@
+	$(AR) rcs $@ $^
+
+# The CD block driver (CDC) only exists as Hitachi SH COFF objects.
+$(BUILD)/libcdc.a: $(SBL_SRC)/LIB/SEGA_CDC.A
+	rm -rf $(BUILD)/cdc && mkdir -p $(BUILD)/cdc
+	cd $(BUILD)/cdc && $(AR) x $(abspath $<)
+	for f in $(BUILD)/cdc/*.o; do $(OBJCOPY) -I coff-sh -O elf32-sh $$f $$f; done
+	rm -f $@
+	$(AR) rcs $@ $(BUILD)/cdc/*.o
+
 # --- runtime shared by every program ---------------------------------------
+# (objects also depend on this Makefile, so changed flags rebuild them)
 
 COMMON_HDRS := $(wildcard common/*.h)
 RUNTIME_OBJS := $(patsubst common/%,$(BUILD)/common/%.o,$(basename $(wildcard common/*.c common/*.S)))
 
-$(BUILD)/common/%.o: common/%.S
+$(BUILD)/common/%.o: common/%.S Makefile
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/common/%.o: common/%.c $(COMMON_HDRS)
+$(BUILD)/common/%.o: common/%.c $(COMMON_HDRS) Makefile
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# the file layer talks to GFS
+$(BUILD)/common/files.o: common/files.c $(COMMON_HDRS) $(BUILD)/sbl/.copied Makefile
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -D_SH -DMODEL_S -I$(BUILD)/sbl/inc -c $< -o $@
 
 # --- opendune: the engine ---------------------------------------------------
 
@@ -84,7 +136,7 @@ ENGINE_SRCS := \
 ENGINE_OBJS := $(ENGINE_SRCS:%.c=$(BUILD)/engine/%.o) $(BUILD)/engine/rev.o
 ENGINE_CFLAGS := $(CFLAGS) -DSATURN -I../include
 
-$(BUILD)/engine/%.o: $(SRC)/%.c
+$(BUILD)/engine/%.o: $(SRC)/%.c Makefile
 	@mkdir -p $(@D)
 	$(CC) $(ENGINE_CFLAGS) -MMD -MP -c $< -o $@
 
@@ -99,7 +151,7 @@ $(BUILD)/engine/rev.c: $(SRC)/rev.c.in
 $(BUILD)/engine/rev.o: $(BUILD)/engine/rev.c
 	$(CC) $(ENGINE_CFLAGS) -I$(SRC) -c $< -o $@
 
-$(BUILD)/opendune.elf: $(RUNTIME_OBJS) $(ENGINE_OBJS) common/saturn.ld
+$(BUILD)/opendune.elf: $(RUNTIME_OBJS) $(ENGINE_OBJS) $(SBL_LIBS) common/saturn.ld
 	$(CC) $(LDFLAGS) $(RUNTIME_OBJS) $(ENGINE_OBJS) $(LIBS) -o $@ -Wl,-Map,$(BUILD)/opendune.map
 
 # --- disc images -------------------------------------------------------------
@@ -110,6 +162,16 @@ $(BUILD)/%/disc/0.BIN: $(BUILD)/%.elf
 
 $(BUILD)/%.iso: $(BUILD)/ip.bin $(BUILD)/%/disc/0.BIN tools/mkdisc.sh
 	tools/mkdisc.sh $(BUILD)/ip.bin $(BUILD)/$*/disc $(BUILD)/$*
+
+# the engine disc also carries the game's PAK archives, in upper case
+DATA_PAKS := $(wildcard $(DATA)/*.PAK $(DATA)/*.pak)
+
+# (the marker file sits next to the disc tree, not in it)
+$(BUILD)/%/data.stamp: $(DATA_PAKS)
+	@[ -n "$(DATA_PAKS)" ] || { echo "No PAK files in $(DATA) (set DATA=...)"; exit 1; }
+	@mkdir -p $(@D)/disc
+	for f in $(DATA_PAKS); do cp $$f $(@D)/disc/$$(basename $$f | tr a-z A-Z); done
+	touch $@
 
 # keep the files the pattern rules produce along the way
 .SECONDARY:

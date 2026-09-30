@@ -1,9 +1,8 @@
 /** @file saturn/common/syscalls.c System calls for newlib on the Saturn.
  *
- * stdout/stderr go to the text console. The heap is high work RAM after the
- * program (minus the stack), then the 1 MB of low work RAM. There is no file
- * system yet: every other file operation fails. The clock counts from
- * power on. */
+ * stdout/stderr go to the text console; files are in files.c. The heap is
+ * high work RAM after the program (minus the stack), then the 1 MB of low
+ * work RAM. The clock counts from power on. */
 
 #include <errno.h>
 #include <stdint.h>
@@ -12,6 +11,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include "console.h"
+#include "files.h"
 #include "saturn_timer.h"
 
 #undef errno
@@ -56,64 +56,9 @@ void *_sbrk(ptrdiff_t increment)
 
 int _write(int fd, const void *buffer, size_t length)
 {
-	if (fd != 1 && fd != 2) {
-		errno = EBADF;
-		return -1;
-	}
+	if (fd != 1 && fd != 2) return files_write(fd, buffer, length);
 	console_write(buffer, (int)length);
 	return (int)length;
-}
-
-int _read(int fd, void *buffer, size_t length)
-{
-	(void)fd; (void)buffer; (void)length;
-	errno = EBADF;
-	return -1;
-}
-
-int _open(const char *name, int flags, int mode)
-{
-	(void)name; (void)flags; (void)mode;
-	errno = ENOENT;
-	return -1;
-}
-
-int _close(int fd)
-{
-	(void)fd;
-	errno = EBADF;
-	return -1;
-}
-
-off_t _lseek(int fd, off_t offset, int whence)
-{
-	(void)fd; (void)offset; (void)whence;
-	errno = EBADF;
-	return -1;
-}
-
-int _fstat(int fd, struct stat *st)
-{
-	if (fd > 2) {
-		errno = EBADF;
-		return -1;
-	}
-	st->st_mode = S_IFCHR;
-	return 0;
-}
-
-int _stat(const char *name, struct stat *st)
-{
-	(void)name; (void)st;
-	errno = ENOENT;
-	return -1;
-}
-
-int _unlink(const char *name)
-{
-	(void)name;
-	errno = ENOENT;
-	return -1;
 }
 
 int mkdir(const char *name, mode_t mode)
