@@ -10,6 +10,8 @@
  *                with a structure selected, X opens its menu (F3) and Y
  *                repairs or upgrades it
  *   L (hold)     Shift: with a command button, Ambush / Area Guard
+ *   L (tap)      select your next unit and centre the view on it;
+ *                C+L: your next structure
  *   Start        options (F2); C+Start: Mentat (F1)
  *   A+B+C+Start  leave for the BIOS screen
  *
@@ -17,6 +19,7 @@
  * the way the other video drivers deliver mouse and keyboard events. */
 
 #include <stddef.h>
+#include <stdio.h>
 
 #include "types.h"
 #include "input.h"
@@ -25,7 +28,15 @@
 #include "../gfx.h"
 #include "../gui/gui.h"
 #include "../gui/widget.h"
+#include "../house.h"
+#include "../map.h"
 #include "../opendune.h"
+#include "../pool/pool.h"
+#include "../pool/structure.h"
+#include "../pool/unit.h"
+#include "../structure.h"
+#include "../tile.h"
+#include "../unit.h"
 
 #include "bios.h"
 #include "saturn_hw.h"
@@ -36,7 +47,8 @@ enum {
 	SPEED_SLOW = 1,             /* pixels per frame */
 	SPEED_MEDIUM = 3,
 	SPEED_FAST = 6,
-	FAST_AFTER_FRAMES = 60
+	FAST_AFTER_FRAMES = 60,
+	TAP_FRAMES = 15             /* an L press this short is a tap, not Shift */
 };
 
 /* PC XT scan codes, as Input_EventHandler() expects */
@@ -63,6 +75,8 @@ static int s_minY = 0, s_maxY = SCREEN_HEIGHT - 1;
 static bool s_positionChanged = true;
 static uint16 s_previous = 0;
 static int s_fastFrames = 0;
+static int s_tapFrames = -1;            /* frames L has been held, -1: not a tap */
+static enum { CYCLE_NONE, CYCLE_UNIT, CYCLE_STRUCTURE } s_cycle = CYCLE_NONE;
 
 void PadSaturn_Init(void)
 {
@@ -165,6 +179,17 @@ void PadSaturn_Tick(void)
 	if (pressed & PAD_L) Input_EventHandler(SCANCODE_LSHIFT);
 	if (released & PAD_L) Input_EventHandler(SCANCODE_LSHIFT | SCANCODE_RELEASED);
 
+	/* a short L press on its own is a tap: cycle, done in the game loop */
+	if (pressed & PAD_L) {
+		s_tapFrames = 0;
+	} else if (s_tapFrames >= 0 && (pad & PAD_L)) {
+		if (++s_tapFrames > TAP_FRAMES || (pressed & ~PAD_C) != 0) s_tapFrames = -1;
+	}
+	if ((released & PAD_L) && s_tapFrames >= 0) {
+		s_cycle = (pad & PAD_C) ? CYCLE_STRUCTURE : CYCLE_UNIT;
+		s_tapFrames = -1;
+	}
+
 	if (g_selectionType == SELECTIONTYPE_STRUCTURE) {
 		if (pressed & PAD_X) PadSaturn_KeyTap(SCANCODE_F3);
 		if (pressed & PAD_Y) PadSaturn_RepairUpgrade();
@@ -174,4 +199,62 @@ void PadSaturn_Tick(void)
 		if (pressed & PAD_Z) PadSaturn_CommandButton(10);
 		if (pressed & PAD_R) PadSaturn_CommandButton(11);
 	}
+}
+
+/* The next of the player's objects after index (wrapping round), or NULL. */
+static Object *PadSaturn_NextObject(bool structures, uint16 index)
+{
+	PoolFindStruct find;
+	Object *first = NULL;
+
+	find.houseID = g_playerHouseID;
+	find.type = 0xFFFF;
+	find.index = 0xFFFF;
+
+	for (;;) {
+		Object *o;
+
+		if (structures) {
+			Structure *st = Structure_Find(&find);
+			if (st == NULL) break;
+			if (st->o.type == STRUCTURE_SLAB_1x1 || st->o.type == STRUCTURE_SLAB_2x2 || st->o.type == STRUCTURE_WALL) continue;
+			o = &st->o;
+		} else {
+			Unit *u = Unit_Find(&find);
+			if (u == NULL) break;
+			if (u->o.type == UNIT_CARRYALL || u->o.type == UNIT_SANDWORM || u->o.flags.s.isNotOnMap) continue;
+			o = &u->o;
+		}
+		if (first == NULL) first = o;
+		if (index == 0xFFFF || o->index > index) return o;
+	}
+	return first;
+}
+
+void PadSaturn_GameLoop(void)
+{
+	bool structures = (s_cycle == CYCLE_STRUCTURE);
+	uint16 index = 0xFFFF;
+	Object *o;
+	uint16 packed;
+
+	if (s_cycle == CYCLE_NONE) return;
+	s_cycle = CYCLE_NONE;
+	if (g_selectionType != SELECTIONTYPE_UNIT && g_selectionType != SELECTIONTYPE_STRUCTURE) return;
+
+	/* continue from the selected object of that kind */
+	if (!structures && g_unitSelected != NULL) index = g_unitSelected->o.index;
+	if (structures && g_unitSelected == NULL) {
+		Structure *st = Structure_Get_ByPackedTile(g_selectionPosition);
+		if (st != NULL && st->o.houseID == g_playerHouseID) index = st->o.index;
+	}
+
+	o = PadSaturn_NextObject(structures, index);
+	if (o == NULL) return;
+
+	/* as clicking the picture of the selection does: centre, then select */
+	packed = Tile_PackTile(o->position);
+	if (structures) Unit_Select(NULL);
+	Map_SetViewportPosition(packed);
+	Map_SetSelection(packed);
 }
