@@ -788,6 +788,9 @@ uint16 GUI_DisplayModalMessage(const char *str, unsigned int spriteID, ...)
 	uint16 ret;
 	Screen oldScreenID;
 	uint8 *screenBackup = NULL;
+#if defined(SATURN)
+	uint16 oldXBase = 0, oldYBase = 0;
+#endif
 
 	va_start(ap, spriteID);
 	vsnprintf(textBuffer, sizeof(textBuffer), str, ap);
@@ -802,6 +805,16 @@ uint16 GUI_DisplayModalMessage(const char *str, unsigned int spriteID, ...)
 	oldWidgetId = Widget_SetCurrentWidget(1);
 
 	g_widgetProperties[1].height = g_fontCurrent->height * max(GUI_SplitText(textBuffer, ((g_curWidgetWidth - ((spriteID == 0xFFFF) ? 2 : 7)) << 3) - 6, '\r'), 3) + 18;
+
+#if defined(SATURN)
+	/* the Saturn's own messages (no controller) in the middle of the screen */
+	if (g_modalMessageUntil != NULL) {
+		oldXBase = g_widgetProperties[1].xBase;
+		oldYBase = g_widgetProperties[1].yBase;
+		g_widgetProperties[1].xBase = (SCREEN_WIDTH / 8 - g_widgetProperties[1].width) / 2;
+		g_widgetProperties[1].yBase = (SCREEN_HEIGHT - g_widgetProperties[1].height) / 2;
+	}
+#endif
 
 	Widget_SetCurrentWidget(1);
 
@@ -862,6 +875,13 @@ uint16 GUI_DisplayModalMessage(const char *str, unsigned int spriteID, ...)
 	if (screenBackup != NULL) {
 		GFX_CopyFromBuffer(g_curWidgetXBase * 8, g_curWidgetYBase, g_curWidgetWidth * 8, g_curWidgetHeight, screenBackup);
 	}
+
+#if defined(SATURN)
+	if (g_modalMessageUntil != NULL) {
+		g_widgetProperties[1].xBase = oldXBase;
+		g_widgetProperties[1].yBase = oldYBase;
+	}
+#endif
 
 	Widget_SetCurrentWidget(oldWidgetId);
 
