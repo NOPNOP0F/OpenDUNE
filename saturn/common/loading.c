@@ -1,13 +1,18 @@
-/** @file saturn/common/loading.c A loading indicator while the game is busy. */
+/** @file saturn/common/loading.c A loading indicator while the game is busy.
+ *
+ * Shown from the VBlank interrupt when the CD has been read most of the
+ * last half second (loads that let the game run between files, like a
+ * house's voices), or when the game hasn't updated the screen for a
+ * quarter of a second; drawn and taken away only here. */
 
-#include "bios.h"
 #include "console.h"
 #include "loading.h"
 #include "saturn_timer.h"
 #include "vdp2.h"
 
 enum {
-	SHOW_AFTER = 15,            /* frames without the video tick (a quarter second) */
+	STALE_FRAMES = 15,          /* frames without the video tick (a quarter second) */
+	BUSY_FRAMES = 12,           /* of the last 32 with the CD being read */
 	DOT_FRAMES = 15,            /* frames per step of the dots */
 	LENGTH = 10,                /* "LOADING..." */
 	/* right-aligned in the border under the 320x200 picture (lines 212-223) */
@@ -16,7 +21,10 @@ enum {
 };
 
 static volatile uint32_t s_alive = 0;       /* frame of the last video tick, 0 before the first */
-static volatile int s_shown = -1;           /* dots shown, -1 when hidden */
+static volatile int s_reading = 0;          /* the CD is being read now */
+static uint32_t s_readFrames = 0;           /* a bit a frame, the latest lowest: read then */
+static int s_shown = -1;                    /* dots shown, -1 when hidden */
+static uint32_t s_shownSince;
 
 static void draw_text(const char *text, int colour)
 {
@@ -32,26 +40,43 @@ static void draw_text(const char *text, int colour)
 	}
 }
 
+static int bits(uint32_t v)
+{
+	int n = 0;
+	for (; v != 0; v &= v - 1) n++;
+	return n;
+}
+
 void loading_alive(void)
 {
 	s_alive = saturn_timer_frames();
-	if (s_shown >= 0) {
-		/* the interrupt draws it: keep it from drawing while it goes */
-		uint32_t sr = cpu_interrupts_disable();
-		draw_text("          ", VDP2_OVERLAY_CLEAR);
-		s_shown = -1;
-		cpu_interrupts_restore(sr);
-	}
+}
+
+void loading_disc(int reading)
+{
+	s_reading = reading;
 }
 
 void loading_vblank(void)
 {
 	static const char *const texts[4] = { "LOADING   ", "LOADING.  ", "LOADING.. ", "LOADING..." };
 	uint32_t frames = saturn_timer_frames();
-	int dots;
+	int busy, dots;
 
-	if (s_alive == 0 || frames - s_alive < SHOW_AFTER) return;
-	dots = (int)((frames - s_alive - SHOW_AFTER) / DOT_FRAMES) % 4;
+	s_readFrames = (s_readFrames << 1) | (s_reading ? 1 : 0);
+	if (s_alive == 0) return;       /* the game isn't showing anything yet */
+
+	busy = frames - s_alive >= STALE_FRAMES || bits(s_readFrames) >= BUSY_FRAMES;
+	if (!busy) {
+		if (s_shown >= 0) {
+			draw_text("          ", VDP2_OVERLAY_CLEAR);
+			s_shown = -1;
+		}
+		return;
+	}
+
+	if (s_shown < 0) s_shownSince = frames;
+	dots = (int)((frames - s_shownSince) / DOT_FRAMES) % 4;
 	if (dots == s_shown) return;
 	draw_text(texts[dots], VDP2_OVERLAY_LIGHT);
 	s_shown = dots;
