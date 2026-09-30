@@ -17,6 +17,9 @@
 #include "../string.h"
 #include "../sprites.h"
 #include "../table/strings.h"
+#if defined(SATURN)
+#include "../input/pad_saturn.h"
+#endif
 
 
 Widget *g_widgetLinkedListHead = NULL;
@@ -251,6 +254,10 @@ uint16 GUI_Widget_HandleEvents(Widget *w)
 	uint16 returnValue;
 	uint16 key;
 	bool fakeClick;
+
+#if defined(SATURN)
+	PadSaturn_HandleEvents(w);
+#endif
 
 	/* Get the key from the buffer, if there was any key pressed */
 	key = 0;
