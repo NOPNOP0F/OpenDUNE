@@ -56,6 +56,26 @@ void smpc_command(uint8_t command)
 	cpu_interrupts_restore(sr);
 }
 
+void smpc_read_clock(uint8_t clock[7])
+{
+	uint32_t sr = cpu_interrupts_disable();
+	int i;
+
+	while (SMPC_SF & 1) {}
+	SMPC_SF = 1;
+	SMPC_IREG(0) = 0x01;        /* SMPC status (with the clock), no peripherals */
+	SMPC_IREG(1) = 0x00;
+	SMPC_IREG(2) = 0xF0;
+	SMPC_COMREG = SMPC_CMD_INTBACK;
+	while (SMPC_SF & 1) {}
+	/* OREG0: status; OREG1-7: year (2 bytes), weekday/month, day, hours,
+	 * minutes, seconds, in BCD */
+	for (i = 0; i < 7; i++) clock[i] = SMPC_OREG(1 + i);
+	s_pending = 0;
+
+	cpu_interrupts_restore(sr);
+}
+
 void smpc_vblank(void)
 {
 	if (SMPC_SF & 1) return;    /* previous command still running */

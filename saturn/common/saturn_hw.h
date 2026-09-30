@@ -56,6 +56,8 @@
 #define SMPC_SF         REG8(0x20100063UL)
 
 #define SMPC_CMD_INTBACK    0x10
+#define SMPC_CMD_RESENAB    0x19    /* reset button on */
+#define SMPC_CMD_RESDISA    0x1A    /* reset button off */
 #define SMPC_SR_PDE         0x20    /* peripheral data remaining */
 
 /* Saturn standard pad, SMPC Table 3.10 (bits are active low in hardware;
