@@ -52,6 +52,10 @@ analog stick the camera.
 Keyboard: the DOS keys; the arrows work as the D-pad, Space as A and Tab
 as C. (Not actually tested, since I don't have a Saturn Keyboard, and Ymir doesn't support it)
 
+Typing a name (a saved game, the Hall of Fame) without a keyboard brings up
+an on-screen keyboard: the D-pad picks a key, A types it, B deletes and
+Start is OK.
+
 
 ## Saving
 

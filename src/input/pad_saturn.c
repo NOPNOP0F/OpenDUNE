@@ -34,6 +34,10 @@
  *   as they are; the arrows work as the D-pad, Space as A and Tab as C.
  * Keyboard and mouse: as on DOS.
  *
+ * Without a keyboard, typing a name (a saved game, the Hall of Fame) brings
+ * up an on-screen keyboard: the D-pad picks a key, A types it, B deletes and
+ * Start is OK.
+ *
  * The mouse pointer is only drawn with a mouse. With the pad-like
  * controllers the focused button gets a reticle, drawn on the VDP2 overlay
  * and gliding from one button to the next (lines of menus and lists change
@@ -48,6 +52,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "types.h"
 #include "input.h"
@@ -56,6 +61,7 @@
 #include "../gfx.h"
 #include "../audio/dsp.h"
 #include "../config.h"
+#include "../gui/font.h"
 #include "../gui/gui.h"
 #include "../gui/mentat.h"
 #include "../gui/widget.h"
@@ -113,6 +119,8 @@ enum {
 /* PC XT scan codes, as Input_EventHandler() expects */
 enum {
 	SCANCODE_ESC = 0x01,
+	SCANCODE_BACKSPACE = 0x0E,
+	SCANCODE_RETURN = 0x1C,
 	SCANCODE_LSHIFT = 0x2A,
 	SCANCODE_F1 = 0x3B,
 	SCANCODE_F2 = 0x3C,
@@ -188,6 +196,27 @@ typedef struct Rect { int x, y, w, h; } Rect; /*!< w 0: none */
 static Rect s_reticle = { 0, 0, 0, 0 };       /*!< where the reticle goes */
 static Rect s_reticleDrawn = { 0, 0, 0, 0 };  /*!< where it is on the overlay */
 static bool s_reticleSnap = false;            /*!< follow at once (the free camera) */
+
+/* the on-screen keyboard, for typing names without a keyboard */
+enum {
+	OSK_COLUMNS = 13,
+	OSK_ROWS = 6,
+	OSK_CELL_W = 16,
+	OSK_CELL_H = 13,
+	OSK_WIDTH = OSK_COLUMNS * OSK_CELL_W + 16,
+	OSK_HEIGHT = OSK_ROWS * OSK_CELL_H + 10,
+	OSK_LEFT = (SCREEN_WIDTH - OSK_WIDTH) / 2,
+	OSK_MARGIN = 2 /*!< from the top or the bottom of the screen */
+};
+
+static volatile bool s_oskWanted = false;  /*!< an editbox waits for text */
+static bool s_oskCancel = false;           /*!< and can be cancelled (Esc) */
+static int s_oskEditBottom = 0;            /*!< the bottom of the line edited */
+static volatile bool s_oskOpen = false;    /*!< the keyboard is on show */
+static volatile bool s_pressStart = false; /*!< Start pressed (OK on the keyboard) */
+static int s_oskRow = 0, s_oskColumn = 0;  /*!< the key selected */
+static int s_oskTop = 0;                   /*!< where the keyboard is drawn */
+static uint8 *s_oskBackup = NULL;          /*!< the screen under it */
 
 /**
  * Start reading the controllers, in the VBlank interrupt.
@@ -500,6 +529,28 @@ static void PadSaturn_MoveFree(int dx, int dy, bool fast)
 }
 
 /**
+ * The buttons while the on-screen keyboard is on show: the D-pad moves
+ * along the keys (repeating when held), A types, B deletes, Start is OK;
+ * PadSaturn_OnScreenKeyboard() carries them out.
+ *
+ * @param pad The buttons (PAD_*).
+ * @param pressed The buttons pressed since the last frame.
+ */
+static void PadSaturn_OskButtons(uint16 pad, uint16 pressed)
+{
+	if (pressed & PAD_DIRECTIONS) s_repeatFrames = 0;
+	if (pad & PAD_DIRECTIONS) {
+		if (s_repeatFrames == 0 || (s_repeatFrames >= REPEAT_FIRST && (s_repeatFrames - REPEAT_FIRST) % REPEAT_NEXT == 0)) {
+			s_navigate = PadSaturn_Direction(pad);
+		}
+		s_repeatFrames++;
+	}
+	if (pressed & PAD_A) s_pressA = true;
+	if (pressed & PAD_B) s_pressB = true;
+	if (pressed & PAD_START) s_pressStart = true;
+}
+
+/**
  * The pad-like controllers: standard pad, 3D Controller, keyboard alone.
  *
  * @param d The controller.
@@ -512,8 +563,9 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 
 	if (controller == CONTROLLER_KEYBOARD) {
 		/* the arrows come as the pad bits; Space and Tab stand for A and C;
-		 * everything else goes to the game as keys */
-		PadSaturn_Keys(false);
+		 * everything else goes to the game as keys (all of them while a
+		 * name is typed) */
+		PadSaturn_Keys(s_oskWanted);
 		pad &= PAD_DIRECTIONS;
 		if (s_keySpace) pad |= PAD_A;
 		if (s_keyTab) pad |= PAD_C;
@@ -532,6 +584,12 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 	s_previous = pad;
 
 	if (controller != CONTROLLER_KEYBOARD && (pad & PAD_RESET) == PAD_RESET) BIOS_EXECDMP();
+
+	/* the on-screen keyboard has the pad while it is on show */
+	if (s_oskOpen && controller != CONTROLLER_KEYBOARD) {
+		PadSaturn_OskButtons(pad, pressed);
+		return;
+	}
 
 	if (pressed & PAD_A) {
 		s_pressA = true;
@@ -1310,6 +1368,288 @@ static void PadSaturn_NewScreen(void)
 }
 
 /**
+ * A key of the on-screen keyboard: what it types (Space, '\b' Delete, 0x1B
+ * Cancel and '\r' OK on the bottom row) and the columns it spans.
+ *
+ * @param row The row.
+ * @param column A column of the key.
+ * @param first Filled with its first column.
+ * @param last Filled with its last column.
+ * @return What it types.
+ */
+static char PadSaturn_OskKey(int row, int column, int *first, int *last)
+{
+	static const char rows[OSK_ROWS - 1][OSK_COLUMNS + 1] = {
+		"ABCDEFGHIJKLM", "NOPQRSTUVWXYZ", "abcdefghijklm", "nopqrstuvwxyz", "0123456789.-'"
+	};
+
+	if (row < OSK_ROWS - 1) {
+		*first = *last = column;
+		return rows[row][column];
+	}
+	if (column < 4) {
+		*first = 0;
+		*last = 3;
+		return ' ';
+	}
+	if (column < 7) {
+		*first = 4;
+		*last = 6;
+		return '\b';
+	}
+	if (s_oskCancel && column < 10) {
+		*first = 7;
+		*last = 9;
+		return 0x1B;
+	}
+	*first = s_oskCancel ? 10 : 7;
+	*last = OSK_COLUMNS - 1;
+	return '\r';
+}
+
+/**
+ * Where a key of the on-screen keyboard is on the screen.
+ *
+ * @param row The row.
+ * @param column A column of the key.
+ * @param r Filled with its rectangle.
+ */
+static void PadSaturn_OskKeyRect(int row, int column, Rect *r)
+{
+	int first, last;
+
+	PadSaturn_OskKey(row, column, &first, &last);
+	r->x = OSK_LEFT + 8 + first * OSK_CELL_W;
+	r->y = s_oskTop + 5 + row * OSK_CELL_H;
+	r->w = (last - first + 1) * OSK_CELL_W;
+	r->h = OSK_CELL_H;
+}
+
+/**
+ * Move the selection of the on-screen keyboard, round at the edges.
+ *
+ * @param direction The direction (as PadSaturn_Direction()).
+ * @return True if it moved (not for diagonals).
+ */
+static bool PadSaturn_OskMove(uint16 direction)
+{
+	int first, last;
+
+	PadSaturn_OskKey(s_oskRow, s_oskColumn, &first, &last);
+	switch (direction) {
+		case 0: s_oskRow = (s_oskRow == 0) ? OSK_ROWS - 1 : s_oskRow - 1; break;
+		case 2: s_oskColumn = (last == OSK_COLUMNS - 1) ? 0 : last + 1; break;
+		case 4: s_oskRow = (s_oskRow == OSK_ROWS - 1) ? 0 : s_oskRow + 1; break;
+		case 6: s_oskColumn = (first == 0) ? OSK_COLUMNS - 1 : first - 1; break;
+		default: return false;
+	}
+	return true;
+}
+
+/**
+ * Type a key of the on-screen keyboard as a keyboard would: its scan code,
+ * with Shift for capitals, so the editbox and the window's shortcuts (Return,
+ * Esc) take it as they take a key.
+ *
+ * @param c What the key types.
+ */
+static void PadSaturn_OskType(char c)
+{
+	/* the PC scan codes of the characters on the keyboard */
+	static const char keys[] = {
+		  0,   0, '1', '2', '3', '4', '5', '6', '7', '8',  '9', '0', '-', '=',   0,   0,
+		'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',  '[', ']',   0,   0, 'a', 's',
+		'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',   0, '\\', 'z', 'x', 'c', 'v',
+		'b', 'n', 'm', ',', '.', '/',   0,   0,   0, ' '
+	};
+	bool shift = c >= 'A' && c <= 'Z';
+	char lower = shift ? (char)(c - 'A' + 'a') : c;
+	uint8 scancode;
+	uint32 sr;
+
+	switch (c) {
+		case '\b': scancode = SCANCODE_BACKSPACE; break;
+		case '\r': scancode = SCANCODE_RETURN; break;
+		case 0x1B: scancode = SCANCODE_ESC; break;
+		default:
+			for (scancode = 0; scancode < sizeof(keys); scancode++) {
+				if (keys[scancode] == lower) break;
+			}
+			if (scancode == sizeof(keys)) return;
+			break;
+	}
+
+	sr = Cpu_DisableInterrupts();
+	if (shift) Input_EventHandler(SCANCODE_LSHIFT);
+	PadSaturn_KeyTap(scancode);
+	if (shift) Input_EventHandler(SCANCODE_LSHIFT | SCANCODE_RELEASED);
+	Cpu_RestoreInterrupts(sr);
+}
+
+/**
+ * Draw the on-screen keyboard on the screen, below the line edited if there
+ * is room or else above it, keeping what was there; or put that back.
+ *
+ * @param show Whether to draw it (else to take it away).
+ */
+static void PadSaturn_OskShow(bool show)
+{
+	uint8 *screen = GFX_Screen_Get_ByIndex(SCREEN_0);
+	Screen oldScreenID;
+	Font *oldFont;
+	int row, column;
+
+	if (show == s_oskOpen) return;
+	GUI_Mouse_Hide_Safe();
+
+	if (!show) {
+		if (s_oskBackup != NULL) {
+			memcpy(screen + s_oskTop * SCREEN_WIDTH, s_oskBackup, SCREEN_WIDTH * OSK_HEIGHT);
+			GFX_Screen_SetDirty(SCREEN_0, 0, s_oskTop, SCREEN_WIDTH, s_oskTop + OSK_HEIGHT);
+		}
+		free(s_oskBackup);
+		s_oskBackup = NULL;
+		s_oskOpen = false;
+		GUI_Mouse_Show_Safe();
+		return;
+	}
+
+	s_oskTop = SCREEN_HEIGHT - OSK_HEIGHT - OSK_MARGIN;
+	if (s_oskEditBottom >= s_oskTop - 1) s_oskTop = OSK_MARGIN;
+	/* without the memory to keep it, the screen is left as the keyboard leaves it */
+	s_oskBackup = malloc(SCREEN_WIDTH * OSK_HEIGHT);
+	if (s_oskBackup != NULL) memcpy(s_oskBackup, screen + s_oskTop * SCREEN_WIDTH, SCREEN_WIDTH * OSK_HEIGHT);
+
+	oldScreenID = GFX_Screen_SetActive(SCREEN_0);
+	oldFont = g_fontCurrent;
+	Font_Select(g_fontNew8p);
+
+	GUI_DrawBorder(OSK_LEFT, s_oskTop, OSK_WIDTH, OSK_HEIGHT, 3, true);
+	GUI_DrawBorder(OSK_LEFT + 4, s_oskTop + 3, OSK_WIDTH - 8, OSK_HEIGHT - 6, 4, false);
+
+	for (row = 0; row < OSK_ROWS; row++) {
+		for (column = 0; column < OSK_COLUMNS; column++) {
+			char text[2];
+			const char *label = text;
+			int first, last;
+			Rect r;
+
+			text[0] = PadSaturn_OskKey(row, column, &first, &last);
+			text[1] = '\0';
+			if (column != first) continue;
+			switch (text[0]) {
+				case ' ': label = "Space"; break;
+				case '\b': label = "Delete"; break;
+				case 0x1B: label = "Cancel"; break;
+				case '\r': label = "OK"; break;
+				default: break;
+			}
+			PadSaturn_OskKeyRect(row, column, &r);
+			GUI_DrawText(label, r.x + (r.w - Font_GetStringWidth(label)) / 2, r.y + (r.h - g_fontCurrent->height) / 2 + 1, 15, 0);
+		}
+	}
+
+	Font_Select(oldFont);
+	GFX_Screen_SetActive(oldScreenID);
+	GFX_Screen_SetDirty(SCREEN_0, 0, s_oskTop, SCREEN_WIDTH, s_oskTop + OSK_HEIGHT);
+	s_oskOpen = true;
+	GUI_Mouse_Show_Safe();
+}
+
+/**
+ * Let go of A for what comes after the on-screen keyboard: the press that
+ * typed its last key mustn't click there when released.
+ */
+static void PadSaturn_OskBlockA(void)
+{
+	uint32 sr = Cpu_DisableInterrupts();
+
+	if (s_previous & PAD_A) {
+		s_previous &= ~PAD_A;
+		s_blockA = true;
+	}
+	Cpu_RestoreInterrupts(sr);
+}
+
+/**
+ * An editbox waits for text, or no longer: without a keyboard connected an
+ * on-screen keyboard types it, from PadSaturn_HandleEvents().
+ *
+ * @param editing Whether the editbox waits for text.
+ * @param cancel Whether it can be cancelled (Esc).
+ */
+void PadSaturn_EditBox(bool editing, bool cancel)
+{
+	s_oskWanted = editing;
+	s_oskCancel = cancel;
+	s_oskEditBottom = g_curWidgetYBase + g_curWidgetHeight - 1;
+	if (editing) return;
+
+	PadSaturn_OskShow(false);
+	PadSaturn_OskBlockA();
+}
+
+/**
+ * The on-screen keyboard: shown while an editbox waits for text and the
+ * controller is a pad (none with a keyboard connected); moves its selection,
+ * types and puts the reticle on the key selected.
+ *
+ * @return True while it is on show (it has the pad then).
+ */
+static bool PadSaturn_OnScreenKeyboard(void)
+{
+	bool show = s_oskWanted && (s_controller == CONTROLLER_PAD || s_controller == CONTROLLER_3D);
+	bool pressA, pressB, pressStart;
+	uint16 direction;
+	uint32 sr;
+	Rect r;
+
+	if (show != s_oskOpen) {
+		if (show) {
+			/* nothing pressed before counts; L may have been holding Shift */
+			PadSaturn_ReleaseA();
+			sr = Cpu_DisableInterrupts();
+			s_navigate = NO_DIRECTION;
+			s_pressA = s_pressB = s_pressStart = false;
+			Input_EventHandler(SCANCODE_LSHIFT | SCANCODE_RELEASED);
+			Cpu_RestoreInterrupts(sr);
+			s_oskRow = s_oskColumn = 0;
+		} else {
+			PadSaturn_OskBlockA();
+		}
+		PadSaturn_OskShow(show);
+	}
+	if (!show) return false;
+
+	sr = Cpu_DisableInterrupts();
+	direction = s_navigate;
+	s_navigate = NO_DIRECTION;
+	pressA = s_pressA;
+	pressB = s_pressB;
+	pressStart = s_pressStart;
+	s_pressA = s_pressB = s_pressStart = false;
+	Cpu_RestoreInterrupts(sr);
+
+	if (direction != NO_DIRECTION && PadSaturn_OskMove(direction)) PadSaturn_Blip();
+	if (pressA) {
+		int first, last;
+
+		PadSaturn_UseSound();
+		PadSaturn_OskType(PadSaturn_OskKey(s_oskRow, s_oskColumn, &first, &last));
+	}
+	if (pressB) PadSaturn_OskType('\b');
+	if (pressStart) PadSaturn_OskType('\r');
+
+	s_focusActive = false;
+	s_cameraActive = false;
+	s_useSound = false;
+	s_reticleSnap = false;
+	PadSaturn_OskKeyRect(s_oskRow, s_oskColumn, &r);
+	PadSaturn_SetReticle(r.x + 2, r.y + 1, r.w - 4, r.h - 2);
+	return true;
+}
+
+/**
  * Pause, with a message, until a controller is connected.
  */
 static void PadSaturn_WaitForController(void)
@@ -1344,9 +1684,11 @@ void PadSaturn_HandleEvents(Widget *list)
 	uint16 direction;
 	uint32 sr;
 
-	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
 	s_handledFrame = SaturnTimer_Frames();
 	s_keyA = 0;
+	/* (gone before the message, which goes where the keyboard was) */
+	if (PadSaturn_OnScreenKeyboard()) return;
+	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE) {
 		s_focusActive = false;
 		s_cameraActive = false;

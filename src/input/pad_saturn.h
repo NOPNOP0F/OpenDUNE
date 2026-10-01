@@ -11,6 +11,7 @@ extern void PadSaturn_Tick(void);
 struct Widget;
 
 extern void PadSaturn_HandleEvents(struct Widget *list);
+extern void PadSaturn_EditBox(bool editing, bool cancel);
 
 extern void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeight, uint16 lines, uint16 current);
 
