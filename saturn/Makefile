@@ -88,11 +88,15 @@ $(BUILD)/libsbl.a: $(SBL_OBJS)
 	rm -f $@
 	$(AR) rcs $@ $^
 
-# The CD block driver (CDC) only exists as Hitachi SH COFF objects.
-$(BUILD)/libcdc.a: $(SBL_SRC)/LIB/SEGA_CDC.A
+# The CD block driver (CDC) only exists as Hitachi SH COFF objects. Converted
+# as they are, its references to its own variables land past them (COFF puts
+# .data and .bss after .text): over newlib's data, depending on the layout.
+# tools/fixcoff.py corrects them, with those sections moved to address 0.
+$(BUILD)/libcdc.a: $(SBL_SRC)/LIB/SEGA_CDC.A tools/fixcoff.py Makefile
 	rm -rf $(BUILD)/cdc && mkdir -p $(BUILD)/cdc
 	cd $(BUILD)/cdc && $(AR) x $(abspath $<)
-	for f in $(BUILD)/cdc/*.o; do $(OBJCOPY) -I coff-sh -O elf32-sh $$f $$f; done
+	for f in $(BUILD)/cdc/*.o; do $(OBJCOPY) -I coff-sh -O elf32-sh --change-section-vma .data=0 --change-section-vma .bss=0 $$f $$f; done
+	python3 tools/fixcoff.py $(BUILD)/cdc/*.o
 	rm -f $@
 	$(AR) rcs $@ $(BUILD)/cdc/*.o
 
