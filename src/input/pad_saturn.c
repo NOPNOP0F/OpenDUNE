@@ -88,6 +88,15 @@ enum {
 	CAMERA_Y = 40 + 5 * 16 + 8,
 	/* the 320x200 picture is centred in the 224 lines shown (video_saturn.c) */
 	OVERLAY_TOP = (VDP2_DISPLAY_H - SCREEN_HEIGHT) / 2,
+	/* the map view, for the free camera's cursor */
+	VIEW_LEFT = 0,
+	VIEW_RIGHT = 239,
+	VIEW_TOP = 40,
+	VIEW_BOTTOM = 199,
+	FREE_SPEED = 2,             /* free camera: pixels a frame, */
+	FREE_SPEED_FAST = 6,        /* with C */
+	EDGE_SCROLL_FRAMES = 6,     /* a tile of scroll every so many frames at the edge, */
+	EDGE_SCROLL_FAST = 3,       /* with C */
 	/* where the cursor waits while the focus is on the Mentat's list: the
 	 * left edge, where the Mentat screen has no widget */
 	LIST_PARK_X = 0,
@@ -159,6 +168,8 @@ static volatile uint16 s_keyA = 0;                  /* a key A sends instead of 
 static volatile bool s_blockA = false;              /* ignore A until it is released */
 static volatile bool s_useSound = false;            /* A on the focus makes the use sound */
 static volatile bool s_pressB = false;              /* B pressed (for the Mentat's list) */
+static volatile int s_edgeX = 0, s_edgeY = 0;       /* free camera: pushing against an edge */
+static volatile bool s_edgeFast = false;            /* with C held */
 static enum { CYCLE_NONE, CYCLE_UNIT, CYCLE_STRUCTURE } s_cycle = CYCLE_NONE;
 
 /* what PadSaturn_HandleEvents() found */
@@ -171,6 +182,7 @@ static bool s_pointerVisible = true;                /* the mouse pointer is draw
 typedef struct Rect { int x, y, w, h; } Rect;       /* w 0: none */
 static Rect s_reticle = { 0, 0, 0, 0 };             /* where the reticle goes */
 static Rect s_reticleDrawn = { 0, 0, 0, 0 };        /* where it is on the overlay */
+static bool s_reticleSnap = false;                  /* follow at once (the free camera) */
 
 void PadSaturn_Init(void)
 {
@@ -379,6 +391,33 @@ static uint16 PadSaturn_Direction(uint16 pad)
 	return directions[bits];
 }
 
+/* Whether the camera's reticle moves freely (Mega Drive) rather than
+ * snapping to tiles in the middle of the view: the Game Controls setting. */
+static bool PadSaturn_FreeCamera(void)
+{
+	return g_gameConfig.camera != 0;
+}
+
+/* Free camera: move the cursor over the map view; pushing on at an edge
+ * asks to scroll that way (PadSaturn_Camera() does it). */
+static void PadSaturn_MoveFree(int dx, int dy, bool fast)
+{
+	int x = s_x + dx, y = s_y + dy;
+
+	s_edgeX = (x < VIEW_LEFT) ? -1 : (x > VIEW_RIGHT) ? 1 : 0;
+	s_edgeY = (y < VIEW_TOP) ? -1 : (y > VIEW_BOTTOM) ? 1 : 0;
+	s_edgeFast = fast;
+	if (x < VIEW_LEFT) x = VIEW_LEFT;
+	if (x > VIEW_RIGHT) x = VIEW_RIGHT;
+	if (y < VIEW_TOP) y = VIEW_TOP;
+	if (y > VIEW_BOTTOM) y = VIEW_BOTTOM;
+	if (x != s_x || y != s_y) {
+		s_x = x;
+		s_y = y;
+		s_positionChanged = true;
+	}
+}
+
 /* The pad-like controllers: standard pad, 3D Controller, keyboard alone. */
 static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 {
@@ -425,10 +464,16 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 		s_repeatFrames++;
 		if (controller == CONTROLLER_3D) s_stickLast = false;
 
-		if (repeat) {
+		if (s_cameraActive && controller != CONTROLLER_3D && PadSaturn_FreeCamera()) {
+			int speed = (pad & PAD_C) ? FREE_SPEED_FAST : FREE_SPEED;
+			PadSaturn_MoveFree(((pad & PAD_RIGHT) ? speed : 0) - ((pad & PAD_LEFT) ? speed : 0),
+				((pad & PAD_DOWN) ? speed : 0) - ((pad & PAD_UP) ? speed : 0), (pad & PAD_C) != 0);
+		} else if (repeat) {
 			if (s_cameraActive && controller != CONTROLLER_3D) s_scroll = PadSaturn_Direction(pad);
 			else s_navigate = PadSaturn_Direction(pad);
 		}
+	} else if (controller != CONTROLLER_3D) {
+		s_edgeX = s_edgeY = 0;
 	}
 
 	/* the 3D Controller's stick: the camera */
@@ -439,8 +484,14 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 		if (abs(sy) < STICK_DEAD) sy = 0;
 		if (sx != 0 || sy != 0) {
 			s_stickLast = true;
-			s_stickX += sx;
-			s_stickY += sy;
+			if (s_cameraActive && PadSaturn_FreeCamera()) {
+				PadSaturn_MoveFree(sx / 16, sy / 16, sx > 100 || sx < -100 || sy > 100 || sy < -100);
+			} else {
+				s_stickX += sx;
+				s_stickY += sy;
+			}
+		} else if (!(pad & PAD_DIRECTIONS)) {
+			s_edgeX = s_edgeY = 0;
 		}
 	}
 
@@ -560,8 +611,8 @@ static void PadSaturn_ReticleTick(void)
 	if (s_reticleDrawn.w == s_reticle.w && s_reticleDrawn.h == s_reticle.h &&
 			s_reticleDrawn.x == s_reticle.x && s_reticleDrawn.y == s_reticle.y) return;
 
-	if (s_reticle.w == 0 || s_reticleDrawn.w == 0) {
-		next = s_reticle;       /* appears or goes at once */
+	if (s_reticle.w == 0 || s_reticleDrawn.w == 0 || s_reticleSnap) {
+		next = s_reticle;       /* appears or goes (or follows the free camera) at once */
 	} else {
 		next.x = PadSaturn_Step(s_reticleDrawn.x, s_reticle.x);
 		next.y = PadSaturn_Step(s_reticleDrawn.y, s_reticle.y);
@@ -951,6 +1002,25 @@ static void PadSaturn_CameraStep(int dx, int dy)
 	if (s_cameraTileY > 4) s_cameraTileY = 4;
 }
 
+/* The free camera: the reticle on the cursor, the view scrolling while it
+ * is pushed against an edge. */
+static void PadSaturn_FreeCameraTick(void)
+{
+	static uint32 lastScroll = 0;
+	uint32 frames = saturn_timer_frames();
+	int movedX, movedY;
+
+	if (s_x < VIEW_LEFT || s_x > VIEW_RIGHT || s_y < VIEW_TOP || s_y > VIEW_BOTTOM) {
+		PadSaturn_SetPosition(CAMERA_X, CAMERA_Y);      /* coming from the side bar */
+	}
+	if ((s_edgeX != 0 || s_edgeY != 0) && frames - lastScroll >= (uint32)(s_edgeFast ? EDGE_SCROLL_FAST : EDGE_SCROLL_FRAMES)) {
+		PadSaturn_ScrollView(s_edgeX, s_edgeY, &movedX, &movedY);
+		lastScroll = frames;
+	}
+	s_reticleSnap = true;
+	PadSaturn_SetReticle(s_x - 8, s_y - 8, 16, 16);
+}
+
 /* Scroll the camera from the D-pad or the stick. */
 static void PadSaturn_Camera(void)
 {
@@ -959,6 +1029,12 @@ static void PadSaturn_Camera(void)
 	uint32 sr;
 	uint16 direction;
 	int sx, sy, x, y;
+
+	if (PadSaturn_FreeCamera()) {
+		PadSaturn_FreeCameraTick();
+		return;
+	}
+	s_reticleSnap = false;
 
 	sr = cpu_interrupts_disable();
 	direction = s_scroll;
@@ -1083,6 +1159,8 @@ void PadSaturn_HandleEvents(Widget *list)
 		/* back from the camera: focus the nearest button */
 		PadSaturn_ReleaseA();
 		s_cameraActive = false;
+		s_reticleSnap = false;
+		s_edgeX = s_edgeY = 0;
 		s_focus = NULL;
 	}
 	PadSaturn_StickScroll(list);
