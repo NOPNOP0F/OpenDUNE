@@ -1185,6 +1185,8 @@ void PadSaturn_HandleEvents(Widget *list)
 		s_focus = next;
 	}
 	s_keyA = (s_focus != NULL && s_focus->clickProc == &GUI_Mentat_List_Click) ? KEY_RETURN : 0;
+	/* the Mentat still speaking: A carries on (a key), not Exit (a click) */
+	if (g_mentatTextPending) s_keyA = KEY_RETURN;
 	/* the use sound, but not for scrolling */
 	s_useSound = s_focus != NULL && s_focus->clickProc != &GUI_Widget_Scrollbar_ArrowUp_Click &&
 		s_focus->clickProc != &GUI_Widget_Scrollbar_ArrowDown_Click;

@@ -989,6 +989,8 @@ static void GUI_Mentat_ShowHelp(void)
  * @param w The widget.
  */
 #if defined(SATURN)
+bool g_mentatTextPending = false;
+
 void GUI_Mentat_ShowHelpSelection(bool show)
 {
 	Widget *w = GUI_Widget_Get_ByIndex(g_widgetMentatTail, s_selectedHelpSubject + 3);
@@ -1143,6 +1145,10 @@ uint16 GUI_Mentat_Loop(const char *wsaFilename, char *pictureDetails, char *text
 
 		GFX_Screen_SetActive(SCREEN_0);
 
+#if defined(SATURN)
+		/* a pad's A carries the speech on while there is more of it */
+		g_mentatTextPending = text != NULL && !textDone;
+#endif
 		key = GUI_Widget_HandleEvents(w);
 
 		GUI_PaletteAnimate();
@@ -1286,6 +1292,9 @@ uint16 GUI_Mentat_Loop(const char *wsaFilename, char *pictureDetails, char *text
 	}
 
 	if (wsa != NULL) WSA_Unload(wsa);
+#if defined(SATURN)
+	g_mentatTextPending = false;
+#endif
 
 	GFX_Screen_SetActive(SCREEN_2);
 	GUI_DrawSprite(SCREEN_2, g_sprites[397 + g_playerHouseID * 15], g_shoulderLeft, g_shoulderTop, 0, 0);
