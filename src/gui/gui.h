@@ -77,6 +77,9 @@ extern uint16 g_factoryWindowOrdered;
 extern uint16 g_factoryWindowBase;
 extern uint16 g_factoryWindowTotal;
 extern uint16 g_factoryWindowSelected;
+#if defined(SATURN)
+extern uint16 g_factoryWindowFirstType;
+#endif
 extern uint16 g_factoryWindowUpgradeCost;
 extern bool g_factoryWindowConstructionYard;
 extern FactoryResult g_factoryWindowResult;

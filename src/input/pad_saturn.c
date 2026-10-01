@@ -947,6 +947,21 @@ static bool PadSaturn_Focusable(const Widget *w)
 static Widget *s_focus = NULL; /*!< the focused widget */
 
 /**
+ * Put the cursor on a widget, so that a new screen focuses it first (the
+ * focus goes to the button nearest the cursor).
+ *
+ * @param w The widget, or NULL.
+ */
+void PadSaturn_FocusWidget(const Widget *w)
+{
+	int x, y;
+
+	if (w == NULL || s_controller == CONTROLLER_KEYBOARD_MOUSE) return;
+	PadSaturn_WidgetPosition(w, &x, &y);
+	PadSaturn_SetPosition((uint16)(x + w->width / 2), (uint16)(y + w->height / 2));
+}
+
+/**
  * Move the focus in a direction, or to the button nearest the cursor for
  * NO_DIRECTION: returns the widget focused then (the same one if there is
  * none that way), or NULL if the screen has nothing to focus.

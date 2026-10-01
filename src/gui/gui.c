@@ -102,6 +102,9 @@ uint16 g_factoryWindowBase = 0;
 uint16 g_factoryWindowTotal = 0;
 uint16 g_factoryWindowSelected = 0;
 uint16 g_factoryWindowUpgradeCost = 0;
+#if defined(SATURN)
+uint16 g_factoryWindowFirstType = 0xFFFF; /*!< The item to open at (the structure's choice), or 0xFFFF. */
+#endif
 bool g_factoryWindowConstructionYard = false;
 FactoryResult g_factoryWindowResult = FACTORY_RESUME;
 bool g_factoryWindowStarport = false;
@@ -2835,6 +2838,21 @@ static void GUI_FactoryWindow_InitItems(void)
 	}
 
 	qsort(g_factoryWindowItems, g_factoryWindowTotal, sizeof(FactoryWindowItem), GUI_FactoryWindow_Sorter);
+
+#if defined(SATURN)
+	/* open at what the structure has chosen, as its side bar shows it, not
+	 * at the first item */
+	{
+		uint16 i;
+
+		for (i = 0; i < g_factoryWindowTotal; i++) {
+			if (g_factoryWindowItems[i].objectType != g_factoryWindowFirstType) continue;
+			g_factoryWindowBase = (i > 3) ? i - 3 : 0;
+			g_factoryWindowSelected = i - g_factoryWindowBase;
+			break;
+		}
+	}
+#endif
 }
 
 static void GUI_FactoryWindow_Init(void)
@@ -2875,10 +2893,14 @@ static void GUI_FactoryWindow_Init(void)
 		}
 	}
 
+#if defined(SATURN)
+	oi = GUI_FactoryWindow_GetItem(g_factoryWindowSelected)->objectInfo;
+#else
 	g_factoryWindowBase = 0;
 	g_factoryWindowSelected = 0;
 
 	oi = g_factoryWindowItems[0].objectInfo;
+#endif
 
 	wsa = WSA_LoadFile(oi->wsa, s_factoryWindowWsaBuffer, sizeof(s_factoryWindowWsaBuffer), false);
 	WSA_DisplayFrame(wsa, 0, 128, 48, SCREEN_1);
@@ -2923,6 +2945,11 @@ FactoryResult GUI_DisplayFactoryWindow(bool isConstructionYard, bool isStarPort,
 	g_factoryWindowOrdered = 0;
 
 	GUI_FactoryWindow_Init();
+
+#if defined(SATURN)
+	/* the pad's focus on the item selected */
+	PadSaturn_FocusWidget(GUI_Widget_Get_ByIndex(g_widgetInvoiceTail, 46 + g_factoryWindowSelected));
+#endif
 
 	GUI_FactoryWindow_UpdateSelection(true);
 

@@ -1557,6 +1557,10 @@ bool Structure_BuildObject(Structure *s, uint16 objectType)
 
 			Timer_SetTimer(TIMER_GAME, false);
 
+#if defined(SATURN)
+			/* (the Starport's orders don't keep a choice) */
+			g_factoryWindowFirstType = (s->o.type == STRUCTURE_STARPORT) ? 0xFFFF : s->objectType;
+#endif
 			res = GUI_DisplayFactoryWindow(g_factoryWindowConstructionYard, s->o.type == STRUCTURE_STARPORT ? 1 : 0, upgradeCost);
 
 			Timer_SetTimer(TIMER_GAME, true);
