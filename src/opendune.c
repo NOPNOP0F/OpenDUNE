@@ -1607,6 +1607,11 @@ void Game_LoadScenario(uint8 houseID, uint16 scenarioID)
  */
 void PrepareEnd(void)
 {
+#if !defined(SATURN)
+	/* (On the Saturn there is nothing to give back to: exit() goes to the
+	 * system menu or shows the error. Taking the drivers and screens away
+	 * first would pull them from under the VBlank interrupt, which goes on
+	 * using them.) */
 	free(g_palette_998A); g_palette_998A = NULL;
 
 	GameLoop_Uninit();
@@ -1624,4 +1629,5 @@ void PrepareEnd(void)
 	Timer_Uninit();
 	GFX_Uninit();
 	Video_Uninit();
+#endif /* SATURN */
 }

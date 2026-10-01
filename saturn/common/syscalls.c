@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include "bios.h"
 #include "console.h"
 #include "files.h"
 #include "saturn_timer.h"
@@ -152,7 +153,8 @@ int _kill(int pid, int signal)
 }
 
 /**
- * exit() ends here: show the exit status on the console and stop.
+ * exit() ends here: back to the Saturn's system menu when the game is over,
+ * or else show the exit status on the console and stop.
  *
  * @param status The exit status.
  */
@@ -160,6 +162,8 @@ void _exit(int status)
 {
 	char text[32];
 	int length;
+
+	if (status == 0) BIOS_EXECDMP();
 
 	length = sprintf(text, "\nexit(%d)\n", status);
 	Console_Write(text, length);
