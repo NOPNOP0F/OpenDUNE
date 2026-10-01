@@ -8,8 +8,12 @@
  * Standard pad (after the Mega Drive version):
  *   D-pad        UI mode: moves the focus between the buttons of the screen
  *                (on the campaign map, between the regions to choose);
- *                camera mode (missions): scrolls the map under a cursor
- *                fixed in the middle of the map view.
+ *                camera mode (missions): with the Tiles camera, scrolls
+ *                the map a tile at a time under a cursor in the middle of
+ *                the view (which leaves the middle only where the map ends);
+ *                with the Free camera (a Game Controls setting, as on the
+ *                Mega Drive), moves the cursor freely, scrolling the map
+ *                smoothly near the edges.
  *   C            in missions, a tap switches between UI and camera mode;
  *                held with the D-pad, scrolls the camera fast. Targeting
  *                and placing a structure use the camera whatever the mode.
@@ -31,9 +35,10 @@
  * Keyboard and mouse: as on DOS.
  *
  * The mouse pointer is only drawn with a mouse. With the pad-like
- * controllers the focused button gets a reticle, drawn on the VDP2 overlay and gliding from one button to the
- * next (lines of menus and lists change colour instead), and so does the
- * centre tile of the camera. Moving the focus makes a blip.
+ * controllers the focused button gets a reticle, drawn on the VDP2 overlay
+ * and gliding from one button to the next (lines of menus and lists change
+ * colour instead), and so does the camera's cursor. Moving the focus makes
+ * a blip.
  *
  * Mouse and key events go to the engine from Video_Tick, as other video
  * drivers deliver them. Moving the focus and the camera needs the game's
