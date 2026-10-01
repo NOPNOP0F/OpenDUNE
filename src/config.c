@@ -12,7 +12,11 @@
 #include "file.h"
 #include "string.h"
 
+#if defined(SATURN)
+GameCfg g_gameConfig = { 1, 1, 2, 1, 0, 0 };
+#else
 GameCfg g_gameConfig = { 1, 1, 2, 1, 0 };
+#endif
 DuneCfg g_config;
 bool g_enableSoundMusic = true;
 bool g_enableVoices = true;
