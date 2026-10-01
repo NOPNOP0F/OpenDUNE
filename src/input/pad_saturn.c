@@ -122,6 +122,7 @@ enum {
 	SCANCODE_BACKSPACE = 0x0E,
 	SCANCODE_RETURN = 0x1C,
 	SCANCODE_LSHIFT = 0x2A,
+	SCANCODE_RSHIFT = 0x36,
 	SCANCODE_F1 = 0x3B,
 	SCANCODE_F2 = 0x3C,
 	SCANCODE_F3 = 0x3D,
@@ -206,7 +207,9 @@ enum {
 	OSK_WIDTH = OSK_COLUMNS * OSK_CELL_W + 16,
 	OSK_HEIGHT = OSK_ROWS * OSK_CELL_H + 10,
 	OSK_LEFT = (SCREEN_WIDTH - OSK_WIDTH) / 2,
-	OSK_MARGIN = 2 /*!< from the top or the bottom of the screen */
+	OSK_MARGIN = 2,       /*!< from the top or the bottom of the screen */
+	DELETE_FIRST = 15,    /*!< B held: Delete again after 250 ms, */
+	DELETE_NEXT = 3       /*!< then every 50 ms */
 };
 
 static volatile bool s_oskWanted = false;  /*!< an editbox waits for text */
@@ -530,7 +533,8 @@ static void PadSaturn_MoveFree(int dx, int dy, bool fast)
 
 /**
  * The buttons while the on-screen keyboard is on show: the D-pad moves
- * along the keys (repeating when held), A types, B deletes, Start is OK;
+ * along the keys (repeating when held), A types, B deletes (repeating
+ * when held), Start is OK;
  * PadSaturn_OnScreenKeyboard() carries them out.
  *
  * @param pad The buttons (PAD_*).
@@ -538,6 +542,8 @@ static void PadSaturn_MoveFree(int dx, int dy, bool fast)
  */
 static void PadSaturn_OskButtons(uint16 pad, uint16 pressed)
 {
+	static int deleteFrames = 0;
+
 	if (pressed & PAD_DIRECTIONS) s_repeatFrames = 0;
 	if (pad & PAD_DIRECTIONS) {
 		if (s_repeatFrames == 0 || (s_repeatFrames >= REPEAT_FIRST && (s_repeatFrames - REPEAT_FIRST) % REPEAT_NEXT == 0)) {
@@ -546,8 +552,14 @@ static void PadSaturn_OskButtons(uint16 pad, uint16 pressed)
 		s_repeatFrames++;
 	}
 	if (pressed & PAD_A) s_pressA = true;
-	if (pressed & PAD_B) s_pressB = true;
 	if (pressed & PAD_START) s_pressStart = true;
+
+	/* B deletes, and goes on deleting while held */
+	if (pressed & PAD_B) deleteFrames = 0;
+	if (pad & PAD_B) {
+		if (deleteFrames == 0 || (deleteFrames >= DELETE_FIRST && (deleteFrames - DELETE_FIRST) % DELETE_NEXT == 0)) s_pressB = true;
+		deleteFrames++;
+	}
 }
 
 /**
@@ -1480,9 +1492,10 @@ static void PadSaturn_OskType(char c)
 	}
 
 	sr = Cpu_DisableInterrupts();
-	if (shift) Input_EventHandler(SCANCODE_LSHIFT);
+	/* the engine takes capitals from the right Shift */
+	if (shift) Input_EventHandler(SCANCODE_RSHIFT);
 	PadSaturn_KeyTap(scancode);
-	if (shift) Input_EventHandler(SCANCODE_LSHIFT | SCANCODE_RELEASED);
+	if (shift) Input_EventHandler(SCANCODE_RSHIFT | SCANCODE_RELEASED);
 	Cpu_RestoreInterrupts(sr);
 }
 
