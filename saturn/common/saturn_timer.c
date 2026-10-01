@@ -15,25 +15,25 @@ static volatile uint16_t s_frameStart;  /* free-running timer at the last VBlank
 static uint32_t s_frameRate = 60;
 static void (*volatile s_vblankHook)(void);
 
-static uint16_t frt_read(void);
+static uint16_t SaturnTimer_FrtRead(void);
 
-/* The VBlank-in handler, entered through saturn_vblank_in_entry (irq_entry.S). */
-void saturn_vblank_in(void);
-extern void saturn_vblank_in_entry(void);
+/* The VBlank-in handler, entered through SaturnTimer_VBlankInEntry (irq_entry.S). */
+void SaturnTimer_VBlankIn(void);
+extern void SaturnTimer_VBlankInEntry(void);
 
-void saturn_vblank_in(void)
+void SaturnTimer_VBlankIn(void)
 {
-	s_frameStart = frt_read();
+	s_frameStart = SaturnTimer_FrtRead();
 	s_frames++;
 	if (s_vblankHook != NULL) s_vblankHook();
 }
 
-void saturn_timer_set_vblank_hook(void (*hook)(void))
+void SaturnTimer_SetVBlankHook(void (*hook)(void))
 {
 	s_vblankHook = hook;
 }
 
-void saturn_timer_init(void)
+void SaturnTimer_Init(void)
 {
 	s_frameRate = (VDP2_TVSTAT & VDP2_TVSTAT_PAL) ? 50 : 60;
 	s_frames = 0;
@@ -41,40 +41,40 @@ void saturn_timer_init(void)
 	/* free-running timer counts at the system clock / 8 (about 3.5 MHz) */
 	FRT_TCR = 0x00;
 
-	BIOS_SETUINT(SCU_VECTOR_VBLANK_IN, saturn_vblank_in_entry);
+	BIOS_SETUINT(SCU_VECTOR_VBLANK_IN, SaturnTimer_VBlankInEntry);
 	BIOS_CHGSCUIM(~SCU_MASK_VBLANK_IN, 0);
-	cpu_interrupts_enable();
+	Cpu_EnableInterrupts();
 }
 
-static uint16_t frt_read(void)
+static uint16_t SaturnTimer_FrtRead(void)
 {
 	/* Reading the high byte latches the low one in a register shared by
 	 * everyone: an interrupt reading the counter in between would leave
 	 * its own low byte there. */
-	uint32_t sr = cpu_interrupts_disable();
+	uint32_t sr = Cpu_DisableInterrupts();
 	uint8_t high = FRT_FRCH;
 	uint8_t low = FRT_FRCL;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 	return (uint16_t)((high << 8) | low);
 }
 
-void saturn_delay_us(uint32_t us)
+void SaturnTimer_DelayUs(uint32_t us)
 {
 	/* the 16-bit counter wraps after about 18 ms: wait in pieces */
 	while (us > 10000) {
-		saturn_delay_us(10000);
+		SaturnTimer_DelayUs(10000);
 		us -= 10000;
 	}
 	{
 		/* 26.8 MHz / 8 (NTSC 320 dots; PAL is close): about 3.36 counts
 		 * per us, rounded up so the wait is never shorter */
 		uint32_t counts = us * 7 / 2 + 1;
-		uint16_t start = frt_read();
-		while ((uint16_t)(frt_read() - start) < counts) {}
+		uint16_t start = SaturnTimer_FrtRead();
+		while ((uint16_t)(SaturnTimer_FrtRead() - start) < counts) {}
 	}
 }
 
-uint64_t saturn_timer_us(void)
+uint64_t SaturnTimer_Us(void)
 {
 	static volatile uint64_t last = 0;
 	uint32_t frames, since, frameUs = 1000000 / s_frameRate;
@@ -86,27 +86,27 @@ uint64_t saturn_timer_us(void)
 	do {
 		frames = s_frames;
 		start = s_frameStart;
-		since = (uint16_t)(frt_read() - start);
+		since = (uint16_t)(SaturnTimer_FrtRead() - start);
 	} while (frames != s_frames);
 
-	since = since * 2 / 7;      /* about 3.5 counts per us, as in saturn_delay_us() */
+	since = since * 2 / 7;      /* about 3.5 counts per us, as in SaturnTimer_DelayUs() */
 	if (since > frameUs) since = frameUs;
 	now = (uint64_t)frames * frameUs + since;
 
 	/* never go back, whoever asks (the estimate within a frame is rough) */
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	if (now < last) now = last;
 	last = now;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 	return now;
 }
 
-uint32_t saturn_timer_frames(void)
+uint32_t SaturnTimer_Frames(void)
 {
 	return s_frames;
 }
 
-uint32_t saturn_timer_ms(void)
+uint32_t SaturnTimer_Ms(void)
 {
 	/* 64-bit so the product doesn't wrap after 20 hours */
 	return (uint32_t)((uint64_t)s_frames * 1000 / s_frameRate);

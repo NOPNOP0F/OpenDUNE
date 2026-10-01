@@ -12,14 +12,14 @@ enum {
 	LITERALS_MAX = 128
 };
 
-static uint32_t hash3(const uint8_t *p)
+static uint32_t Pack_Hash3(const uint8_t *p)
 {
 	uint32_t v = ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
 	return (v * 2654435761u) >> (32 - HASH_BITS);
 }
 
 /* Write the literal run src[start..end) as tokens. */
-static int put_literals(const uint8_t *src, uint32_t start, uint32_t end, uint8_t *dst, uint32_t *out, uint32_t capacity)
+static int Pack_PutLiterals(const uint8_t *src, uint32_t start, uint32_t end, uint8_t *dst, uint32_t *out, uint32_t capacity)
 {
 	while (start < end) {
 		uint32_t n = end - start;
@@ -31,7 +31,7 @@ static int put_literals(const uint8_t *src, uint32_t start, uint32_t end, uint8_
 	return 1;
 }
 
-uint32_t pack_compress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t capacity)
+uint32_t Pack_Compress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t capacity)
 {
 	uint32_t *table = malloc(sizeof(uint32_t) << HASH_BITS);
 	uint32_t pos = 0, literal = 0, out = 0;
@@ -42,7 +42,7 @@ uint32_t pack_compress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t
 	for (i = 0; i < (1u << HASH_BITS); i++) table[i] = 0;
 
 	while (pos + MATCH_MIN <= size) {
-		uint32_t h = hash3(src + pos);
+		uint32_t h = Pack_Hash3(src + pos);
 		uint32_t candidate = table[h];
 		uint32_t length = 0;
 
@@ -58,7 +58,7 @@ uint32_t pack_compress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t
 			continue;
 		}
 
-		if (!put_literals(src, literal, pos, dst, &out, capacity)) break;
+		if (!Pack_PutLiterals(src, literal, pos, dst, &out, capacity)) break;
 		if (out + 4 > capacity) break;
 		{
 			uint32_t distance = pos - (candidate - 1) - 1;
@@ -72,17 +72,17 @@ uint32_t pack_compress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t
 			dst[out++] = (uint8_t)distance;
 		}
 		/* index the positions inside the copy too, for later matches */
-		for (i = 1; i < length && pos + i + MATCH_MIN <= size; i++) table[hash3(src + pos + i)] = pos + i + 1;
+		for (i = 1; i < length && pos + i + MATCH_MIN <= size; i++) table[Pack_Hash3(src + pos + i)] = pos + i + 1;
 		pos += length;
 		literal = pos;
 	}
 	free(table);
 	if (pos + MATCH_MIN <= size) return 0;     /* ran out of room */
-	if (!put_literals(src, literal, size, dst, &out, capacity)) return 0;
+	if (!Pack_PutLiterals(src, literal, size, dst, &out, capacity)) return 0;
 	return out;
 }
 
-uint32_t pack_decompress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t capacity)
+uint32_t Pack_Decompress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t capacity)
 {
 	uint32_t in = 0, out = 0;
 

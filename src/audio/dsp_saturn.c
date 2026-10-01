@@ -37,7 +37,7 @@ typedef struct SaturnVoice {
 
 static bool s_ready = false;
 static int32 s_scratch = -1;
-static uint64_t s_endUs = 0;    /* time (saturn_timer_us()) the playing voice ends */
+static uint64_t s_endUs = 0;    /* time (SaturnTimer_Us()) the playing voice ends */
 static int32 s_playing = -1;    /* sound RAM offset of the voice on the slot, playing or done */
 static int32 s_blip = -1;       /* the blip's wave in sound RAM */
 
@@ -58,18 +58,18 @@ static bool DSP_ParseVoc(const uint8 *data, const uint8 **pcm, uint32 *length, u
 
 bool DSP_Init(void)
 {
-	scsp_init();
-	s_scratch = scsp_alloc(SCRATCH_SIZE);
+	Scsp_Init();
+	s_scratch = Scsp_Alloc(SCRATCH_SIZE);
 	s_ready = (s_scratch >= 0);
 
 	/* the blip: a cycle of a sine, played round and round */
-	s_blip = scsp_alloc(BLIP_SAMPLES);
+	s_blip = Scsp_Alloc(BLIP_SAMPLES);
 	if (s_blip >= 0) {
 		static const uint8 sine[BLIP_SAMPLES] = {
 			128, 153, 177, 199, 218, 234, 245, 252, 255, 252, 245, 234, 218, 199, 177, 153,
 			128, 103, 79, 57, 38, 22, 11, 4, 1, 4, 11, 22, 38, 57, 79, 103
 		};
-		scsp_upload_u8(s_blip, sine, BLIP_SAMPLES);
+		Scsp_UploadU8(s_blip, sine, BLIP_SAMPLES);
 	}
 	return s_ready;
 }
@@ -83,16 +83,16 @@ void DSP_Uninit(void)
 void DSP_Stop(void)
 {
 	if (!s_ready) return;
-	scsp_stop(VOICE_SLOT);
+	Scsp_Stop(VOICE_SLOT);
 	s_endUs = 0;
 	s_playing = -1;
 }
 
 static void DSP_PlayFromSoundRam(int32 offset, uint32 samples, uint32 rate)
 {
-	scsp_play(VOICE_SLOT, offset, samples, rate, 255);
+	Scsp_Play(VOICE_SLOT, offset, samples, rate, 255);
 	s_playing = offset;
-	s_endUs = saturn_timer_us() + (uint64_t)samples * 1000000 / rate + 1;
+	s_endUs = SaturnTimer_Us() + (uint64_t)samples * 1000000 / rate + 1;
 }
 
 void DSP_Play(const uint8 *data)
@@ -111,14 +111,14 @@ void DSP_Play(const uint8 *data)
 
 	if (!DSP_ParseVoc(data, &pcm, &length, &rate)) return;
 	if (length > SCRATCH_MAX) length = SCRATCH_MAX;
-	scsp_upload_u8(s_scratch, pcm, length);
-	scsp_upload_tail(s_scratch + (int32)((length + 1) & ~1u));
+	Scsp_UploadU8(s_scratch, pcm, length);
+	Scsp_UploadTail(s_scratch + (int32)((length + 1) & ~1u));
 	DSP_PlayFromSoundRam(s_scratch, length, rate);
 }
 
 uint8 DSP_GetStatus(void)
 {
-	return (s_endUs != 0 && saturn_timer_us() < s_endUs) ? 2 : 0;
+	return (s_endUs != 0 && SaturnTimer_Us() < s_endUs) ? 2 : 0;
 }
 
 void DSP_Saturn_Blip(DSPBlip blip)
@@ -138,15 +138,15 @@ void DSP_Saturn_Blip(DSPBlip blip)
 		/* about 880 Hz (32 samples a cycle at 28.2 kHz), some 250 ms */
 		note.decay1 = note.decay2 = 19;
 		note.level = 0x20;
-		note.pitch = scsp_pitch(-1, 284);
+		note.pitch = Scsp_Pitch(-1, 284);
 	} else {
 		/* about 1.4 kHz (32 samples a cycle at 44.8 kHz), dying away in
 		 * some 130 ms like the game's own blip (effect 38) */
 		note.decay1 = note.decay2 = 21;
 		note.level = 0x28;
-		note.pitch = scsp_pitch(0, 16);
+		note.pitch = Scsp_Pitch(0, 16);
 	}
-	scsp_note_on(BLIP_SLOT, &note);
+	Scsp_NoteOn(BLIP_SLOT, &note);
 }
 
 void *DSP_Saturn_KeepVoc(void *voc, uint32 *size)
@@ -162,17 +162,17 @@ void *DSP_Saturn_KeepVoc(void *voc, uint32 *size)
 	}
 
 	voice = malloc(sizeof(SaturnVoice));
-	offset = scsp_alloc(((length + 1) & ~1u) + SCSP_TAIL);
+	offset = Scsp_Alloc(((length + 1) & ~1u) + SCSP_TAIL);
 	if (voice == NULL || offset < 0) {
 		/* sound RAM is full: the voice will be loaded when it is needed */
-		if (offset >= 0) scsp_free(offset);
+		if (offset >= 0) Scsp_Free(offset);
 		free(voice);
 		free(voc);
 		return NULL;
 	}
 
-	scsp_upload_u8(offset, pcm, length);
-	scsp_upload_tail(offset + (int32)((length + 1) & ~1u));
+	Scsp_UploadU8(offset, pcm, length);
+	Scsp_UploadTail(offset + (int32)((length + 1) & ~1u));
 	free(voc);
 
 	voice->magic = DESCRIPTOR_MAGIC;
@@ -191,7 +191,7 @@ void DSP_Saturn_FreeVoc(void *data)
 		/* the slot loops round the end of the last voice even after it has
 		 * finished: let it go before the sound RAM is used for something else */
 		if (voice->offset == s_playing) DSP_Stop();
-		scsp_free(voice->offset);
+		Scsp_Free(voice->offset);
 	}
 	free(voice);
 }
@@ -199,7 +199,7 @@ void DSP_Saturn_FreeVoc(void *data)
 bool DSP_Saturn_CanKeep(uint32 fileSize)
 {
 	/* the PCM data is shorter than the file */
-	return s_ready && scsp_largest_free() >= fileSize + SCSP_TAIL;
+	return s_ready && Scsp_LargestFree() >= fileSize + SCSP_TAIL;
 }
 
 bool DSP_Saturn_IsPlaying(const void *data)

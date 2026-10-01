@@ -20,7 +20,7 @@ static volatile uint8_t s_keys[KEY_QUEUE];    /* keyboard key numbers */
 static volatile uint8_t s_keyMake[KEY_QUEUE];   /* 1: pressed, 0: released */
 static volatile uint8_t s_keyHead, s_keyTail;
 
-static void intback_issue(void)
+static void Smpc_IntbackIssue(void)
 {
 	SMPC_SF = 1;
 	SMPC_IREG(0) = 0x00;        /* no SMPC status, peripheral data only */
@@ -30,7 +30,7 @@ static void intback_issue(void)
 }
 
 /* Decode one device's data into d, and take its mouse movement and key. */
-static void device_decode(SmpcDevice *d, uint8_t id, const uint8_t *data, int size)
+static void Smpc_DeviceDecode(SmpcDevice *d, uint8_t id, const uint8_t *data, int size)
 {
 	d->id = id;
 	d->buttons = 0;
@@ -86,7 +86,7 @@ static void device_decode(SmpcDevice *d, uint8_t id, const uint8_t *data, int si
 	}
 }
 
-static uint16_t intback_collect(void)
+static uint16_t Smpc_IntbackCollect(void)
 {
 	int o = 0, port;
 
@@ -110,7 +110,7 @@ static uint16_t intback_collect(void)
 			for (i = 0; i < size && o < 32; i++) data[i] = SMPC_OREG(o++);
 			if (id == 0xFF) continue;       /* empty multitap connector */
 			/* the first device of the port (the only one without a multitap) */
-			if (d->kind == SMPC_NONE) device_decode(d, id, data, i);
+			if (d->kind == SMPC_NONE) Smpc_DeviceDecode(d, id, data, i);
 		}
 	}
 
@@ -120,18 +120,18 @@ static uint16_t intback_collect(void)
 	return s_devices[0].kind == SMPC_MOUSE ? 0 : s_devices[0].buttons;
 }
 
-uint16_t smpc_pad_read(void)
+uint16_t Smpc_PadRead(void)
 {
 	while (SMPC_SF & 1) {}
-	intback_issue();
+	Smpc_IntbackIssue();
 	while (SMPC_SF & 1) {}
-	return intback_collect();
+	return Smpc_IntbackCollect();
 }
 
-void smpc_command(uint8_t command)
+void Smpc_Command(uint8_t command)
 {
 	/* keep the VBlank handler from issuing INTBACK in between */
-	uint32_t sr = cpu_interrupts_disable();
+	uint32_t sr = Cpu_DisableInterrupts();
 
 	while (SMPC_SF & 1) {}
 	SMPC_SF = 1;
@@ -139,12 +139,12 @@ void smpc_command(uint8_t command)
 	while (SMPC_SF & 1) {}
 	s_pending = 0;              /* the output registers no longer hold pad data */
 
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 }
 
-void smpc_read_clock(uint8_t clock[7])
+void Smpc_ReadClock(uint8_t clock[7])
 {
-	uint32_t sr = cpu_interrupts_disable();
+	uint32_t sr = Cpu_DisableInterrupts();
 	int i;
 
 	while (SMPC_SF & 1) {}
@@ -159,49 +159,49 @@ void smpc_read_clock(uint8_t clock[7])
 	for (i = 0; i < 7; i++) clock[i] = SMPC_OREG(1 + i);
 	s_pending = 0;
 
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 }
 
-void smpc_vblank(void)
+void Smpc_VBlank(void)
 {
 	if (SMPC_SF & 1) return;    /* previous command still running */
-	if (s_pending) s_padState = intback_collect();
-	intback_issue();
+	if (s_pending) s_padState = Smpc_IntbackCollect();
+	Smpc_IntbackIssue();
 	s_pending = 1;
 }
 
-uint16_t smpc_pad_state(void)
+uint16_t Smpc_PadState(void)
 {
 	return s_padState;
 }
 
-void smpc_devices(SmpcDevice devices[2])
+void Smpc_Devices(SmpcDevice devices[2])
 {
-	uint32_t sr = cpu_interrupts_disable();
+	uint32_t sr = Cpu_DisableInterrupts();
 	devices[0] = s_devices[0];
 	devices[1] = s_devices[1];
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 }
 
-void smpc_mouse_motion(int *dx, int *dy)
+void Smpc_MouseMotion(int *dx, int *dy)
 {
-	uint32_t sr = cpu_interrupts_disable();
+	uint32_t sr = Cpu_DisableInterrupts();
 	*dx = s_mouseX;
 	*dy = s_mouseY;
 	s_mouseX = s_mouseY = 0;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 }
 
-int smpc_key_event(uint8_t *key, int *make)
+int Smpc_KeyEvent(uint8_t *key, int *make)
 {
 	int got = 0;
-	uint32_t sr = cpu_interrupts_disable();
+	uint32_t sr = Cpu_DisableInterrupts();
 	if (s_keyTail != s_keyHead) {
 		*key = s_keys[s_keyTail];
 		*make = s_keyMake[s_keyTail];
 		s_keyTail = (uint8_t)((s_keyTail + 1) % KEY_QUEUE);
 		got = 1;
 	}
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 	return got;
 }

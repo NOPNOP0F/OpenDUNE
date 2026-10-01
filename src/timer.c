@@ -78,7 +78,7 @@ uint32 Timer_GetTime(void)
 #elif defined(__WATCOMC__)
 	return clock() * 1000 / CLOCKS_PER_SEC;
 #elif defined(SATURN)
-	return (uint32)(saturn_timer_us() / 1000);
+	return (uint32)(SaturnTimer_Us() / 1000);
 #else
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
@@ -275,7 +275,7 @@ void Timer_Init(void)
 #elif defined(DOS) || defined(__HAIKU__)
 	/* */
 #elif defined(SATURN)
-	saturn_timer_init();
+	SaturnTimer_Init();
 	s_timerLastTime = Timer_GetTime();
 #else
 	{

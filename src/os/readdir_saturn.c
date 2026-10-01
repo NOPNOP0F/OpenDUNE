@@ -43,7 +43,7 @@ bool ReadDir_ProcessAllFiles(const char * dirpath, bool (*cb)(const char * name,
 	context.dirpath = dirpath;
 	context.callback = cb;
 	context.ok = true;
-	if (!files_cd_list(ReadDir_ProcessCdFile, &context)) {
+	if (!Files_CdList(ReadDir_ProcessCdFile, &context)) {
 		Error("Cannot read the disc\n");
 		return false;
 	}

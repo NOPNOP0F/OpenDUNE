@@ -64,22 +64,22 @@ static uint32 MPU_FileSize(const uint8 *file)
 
 bool MPU_Init(void)
 {
-	scsp_init();
-	if (!opl_scsp_init()) return false;
-	ADL_Init(opl_scsp_write);
+	Scsp_Init();
+	if (!OplScsp_Init()) return false;
+	ADL_Init(OplScsp_Write);
 	memset(s_handles, 0, sizeof(s_handles));
-	s_nextTick = saturn_timer_us();
-	scsp_timer_start(MPU_Tick);
+	s_nextTick = SaturnTimer_Us();
+	Scsp_TimerStart(MPU_Tick);
 	return true;
 }
 
 void MPU_Uninit(void)
 {
-	uint32_t sr = cpu_interrupts_disable();
+	uint32_t sr = Cpu_DisableInterrupts();
 	ADL_Load(NULL, 0);
 	s_loaded = NULL;
-	opl_scsp_reset();
-	cpu_interrupts_restore(sr);
+	OplScsp_Reset();
+	Cpu_RestoreInterrupts(sr);
 }
 
 uint16 MPU_GetDataSize(void)
@@ -118,10 +118,10 @@ void MPU_ClearData(uint16 index)
 		if (s_handles[i].used && s_handles[i].file == s_loaded) return;
 	}
 	{
-		uint32_t sr = cpu_interrupts_disable();
+		uint32_t sr = Cpu_DisableInterrupts();
 		ADL_Load(NULL, 0);
 		s_loaded = NULL;
-		cpu_interrupts_restore(sr);
+		Cpu_RestoreInterrupts(sr);
 	}
 }
 
@@ -134,11 +134,11 @@ void MPU_Play(uint16 index)
 	h = &s_handles[index];
 	size = (h->file != s_loaded) ? MPU_FileSize(h->file) : 0;
 
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	if (h->file != s_loaded) {
 		if (!ADL_Load(h->file, size)) {
 			s_loaded = NULL;
-			cpu_interrupts_restore(sr);
+			Cpu_RestoreInterrupts(sr);
 			return;
 		}
 		s_loaded = h->file;
@@ -146,10 +146,10 @@ void MPU_Play(uint16 index)
 	if (h->music) {
 		s_musicHandle = index;
 		s_fadeAtt = s_fadeTarget = s_fadeStep = 0;
-		opl_scsp_set_attenuation(MUSIC_FIRST, MUSIC_LAST, 0);
+		OplScsp_SetAttenuation(MUSIC_FIRST, MUSIC_LAST, 0);
 	}
 	ADL_Play(h->track, 0xFF);
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 }
 
 void MPU_Stop(uint16 index)
@@ -157,9 +157,9 @@ void MPU_Stop(uint16 index)
 	/* sound effects end by themselves, or give way by priority */
 	if (index >= HANDLES || !s_handles[index].used || !s_handles[index].music) return;
 	if (s_loaded != NULL) {
-		uint32_t sr = cpu_interrupts_disable();
+		uint32_t sr = Cpu_DisableInterrupts();
 		ADL_StopMusic();
-		cpu_interrupts_restore(sr);
+		Cpu_RestoreInterrupts(sr);
 	}
 }
 
@@ -171,12 +171,12 @@ uint16 MPU_IsPlaying(uint16 index)
 
 	if (index >= HANDLES || !s_handles[index].used) return 0;
 	if (!s_handles[index].music) return 0;
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	for (channel = MUSIC_FIRST; channel <= MUSIC_LAST; channel++) {
 		if (ADL_IsChannelPlaying(channel)) playing = 1;
 	}
 	if (ADL_IsChannelPlaying(9)) playing = 1;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 	return playing;
 }
 
@@ -191,22 +191,22 @@ void MPU_SetVolume(uint16 index, uint16 volume, uint16 time)
 
 	target = (volume == 0) ? 255 : 0;
 	ticks = (int32)time * 72 / 1000;
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	s_fadeTarget = target << 8;
 	if (ticks <= 0) {
 		s_fadeAtt = s_fadeTarget;
 		s_fadeStep = 0;
-		opl_scsp_set_attenuation(MUSIC_FIRST, MUSIC_LAST, (uint8)target);
+		OplScsp_SetAttenuation(MUSIC_FIRST, MUSIC_LAST, (uint8)target);
 	} else {
 		s_fadeStep = (s_fadeTarget - s_fadeAtt) / ticks;
 	}
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 }
 
 /* Every millisecond, from the SCSP timer interrupt. */
 static void MPU_Tick(void)
 {
-	uint64_t now = saturn_timer_us();
+	uint64_t now = SaturnTimer_Us();
 	int ticks = 0;
 
 	/* evenly spaced driver ticks */
@@ -217,7 +217,7 @@ static void MPU_Tick(void)
 		}
 		s_nextTick += TICK_US;
 		ADL_Callback();
-		opl_scsp_flush();
+		OplScsp_Flush();
 
 		if (s_fadeStep != 0) {
 			s_fadeAtt += s_fadeStep;
@@ -225,10 +225,10 @@ static void MPU_Tick(void)
 				s_fadeAtt = s_fadeTarget;
 				s_fadeStep = 0;
 			}
-			opl_scsp_set_attenuation(MUSIC_FIRST, MUSIC_LAST, (uint8)(s_fadeAtt >> 8));
+			OplScsp_SetAttenuation(MUSIC_FIRST, MUSIC_LAST, (uint8)(s_fadeAtt >> 8));
 		}
 	}
-	opl_scsp_update();
+	OplScsp_Update();
 }
 
 void MPU_Interrupt(void)

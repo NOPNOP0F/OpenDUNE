@@ -9,13 +9,13 @@ extern int main(int argc, char **argv);
 extern void (*s_initArrayStart[])(void) __asm__("__init_array_start");
 extern void (*s_initArrayEnd[])(void) __asm__("__init_array_end");
 
-void saturn_start(void)
+void Saturn_Start(void)
 {
 	static char name[] = "opendune";
 	static char *argv[] = { name, NULL };
 	void (**constructor)(void);
 
-	crash_install();
+	Crash_Install();
 
 	/* C++ static constructors (the AdLib driver's) */
 	for (constructor = s_initArrayStart; constructor < s_initArrayEnd; constructor++) (*constructor)();

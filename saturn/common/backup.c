@@ -62,7 +62,7 @@ static uint32_t *s_lib, *s_work;
 static BupConfig s_config[3];
 static int s_device = BACKUP_INTERNAL;
 
-static int bup_begin(void)
+static int Backup_Begin(void)
 {
 	s_lib = malloc(LIB_SIZE);
 	s_work = malloc(WORK_SIZE);
@@ -71,14 +71,14 @@ static int bup_begin(void)
 		free(s_work);
 		return 0;
 	}
-	smpc_command(SMPC_CMD_RESDISA);
+	Smpc_Command(SMPC_CMD_RESDISA);
 	BUP_Init(s_lib, s_work, s_config);
 	return 1;
 }
 
-static void bup_end(void)
+static void Backup_End(void)
 {
-	smpc_command(SMPC_CMD_RESENAB);
+	Smpc_Command(SMPC_CMD_RESENAB);
 	free(s_lib);
 	free(s_work);
 	s_lib = s_work = NULL;
@@ -86,7 +86,7 @@ static void bup_end(void)
 
 /* Whether the selected device is there and formatted (formatting it if it
  * isn't, as the BIOS would). */
-static int bup_ready(void)
+static int Backup_Ready(void)
 {
 	BupStat stat;
 	if (s_config[s_device].unit_id == 0) return 0;
@@ -95,7 +95,7 @@ static int bup_ready(void)
 }
 
 /* Find a file by its exact name (BUP_Dir matches the start of names). */
-static int bup_find(const char *name, BupDir *found)
+static int Backup_Find(const char *name, BupDir *found)
 {
 	BupDir dir[DIR_MAX];
 	int32_t count = BUP_Dir((uint32_t)s_device, (uint8_t *)name, DIR_MAX, dir);
@@ -112,13 +112,13 @@ static int bup_find(const char *name, BupDir *found)
 }
 
 /* Now, as a backup library date stamp. */
-static uint32_t bup_now(void)
+static uint32_t Backup_Now(void)
 {
 	uint8_t clock[7];
 	BupDate date;
 	int year;
 
-	smpc_read_clock(clock);
+	Smpc_ReadClock(clock);
 	year = (clock[0] >> 4) * 1000 + (clock[0] & 0xF) * 100 + (clock[1] >> 4) * 10 + (clock[1] & 0xF);
 	date.year = (uint8_t)(year - 1980);
 	date.month = clock[2] & 0xF;
@@ -129,60 +129,60 @@ static uint32_t bup_now(void)
 	return BUP_SetDate(&date);
 }
 
-int backup_has_cartridge(void)
+int Backup_HasCartridge(void)
 {
 	int present;
-	if (!bup_begin()) return 0;
+	if (!Backup_Begin()) return 0;
 	present = s_config[BACKUP_CARTRIDGE].unit_id != 0;
-	bup_end();
+	Backup_End();
 	return present;
 }
 
 /* Free bytes on a device, or -1 if it isn't there. */
-static int32_t bup_free(int device)
+static int32_t Backup_DeviceFree(int device)
 {
 	BupStat stat;
 	int saved = s_device;
 	int32_t free_bytes = -1;
 
 	s_device = device;
-	if (bup_ready() && BUP_Stat((uint32_t)device, 0, &stat) == 0) free_bytes = (int32_t)stat.freesize;
+	if (Backup_Ready() && BUP_Stat((uint32_t)device, 0, &stat) == 0) free_bytes = (int32_t)stat.freesize;
 	s_device = saved;
 	return free_bytes;
 }
 
-int32_t backup_free(int device)
+int32_t Backup_Free(int device)
 {
 	int32_t free_bytes;
-	if (!bup_begin()) return -1;
-	free_bytes = bup_free(device);
-	bup_end();
+	if (!Backup_Begin()) return -1;
+	free_bytes = Backup_DeviceFree(device);
+	Backup_End();
 	return free_bytes;
 }
 
-void backup_select(int device)
+void Backup_Select(int device)
 {
 	s_device = device;
 }
 
-int backup_read(const char *name, uint8_t **data, uint32_t *size)
+int Backup_Read(const char *name, uint8_t **data, uint32_t *size)
 {
 	BupDir dir;
 	uint8_t *packed = NULL, *unpacked = NULL;
 	uint32_t length = 0;
 	int ok = 0;
 
-	if (!bup_begin()) return 0;
-	if (bup_ready() && bup_find(name, &dir) && dir.datasize >= 4) {
+	if (!Backup_Begin()) return 0;
+	if (Backup_Ready() && Backup_Find(name, &dir) && dir.datasize >= 4) {
 		packed = malloc(dir.datasize);
 		if (packed != NULL && BUP_Read((uint32_t)s_device, (uint8_t *)name, packed) == 0) ok = 1;
 	}
-	bup_end();
+	Backup_End();
 
 	if (ok) {
 		length = ((uint32_t)packed[0] << 24) | ((uint32_t)packed[1] << 16) | ((uint32_t)packed[2] << 8) | packed[3];
 		unpacked = malloc(length != 0 ? length : 1);
-		ok = unpacked != NULL && pack_decompress(packed + 4, dir.datasize - 4, unpacked, length) == length;
+		ok = unpacked != NULL && Pack_Decompress(packed + 4, dir.datasize - 4, unpacked, length) == length;
 	}
 	free(packed);
 	if (!ok) {
@@ -194,7 +194,7 @@ int backup_read(const char *name, uint8_t **data, uint32_t *size)
 	return 1;
 }
 
-int backup_write(const char *name, const char *comment, const uint8_t *data, uint32_t size)
+int Backup_Write(const char *name, const char *comment, const uint8_t *data, uint32_t size)
 {
 	uint32_t capacity = size + size / 128 + 16;
 	uint8_t *packed = malloc(4 + capacity);
@@ -203,7 +203,7 @@ int backup_write(const char *name, const char *comment, const uint8_t *data, uin
 	int ok = 0;
 
 	if (packed == NULL) return 0;
-	length = pack_compress(data, size, packed + 4, capacity);
+	length = Pack_Compress(data, size, packed + 4, capacity);
 	if (length == 0 && size != 0) {
 		free(packed);
 		return 0;
@@ -213,25 +213,25 @@ int backup_write(const char *name, const char *comment, const uint8_t *data, uin
 	packed[2] = (uint8_t)(size >> 8);
 	packed[3] = (uint8_t)size;
 
-	if (bup_begin()) {
-		if (bup_ready()) {
+	if (Backup_Begin()) {
+		if (Backup_Ready()) {
 			memset(&dir, 0, sizeof(dir));
 			strncpy((char *)dir.filename, name, BACKUP_NAME_LENGTH);
 			strncpy((char *)dir.comment, comment, sizeof(dir.comment) - 1);
 			dir.language = BUP_ENGLISH;
-			dir.date = bup_now();
+			dir.date = Backup_Now();
 			dir.datasize = 4 + length;
 			ok = BUP_Write((uint32_t)s_device, &dir, packed, 0) == 0;
 		}
-		bup_end();
+		Backup_End();
 	}
 	free(packed);
 	return ok;
 }
 
-void backup_delete(const char *name)
+void Backup_Delete(const char *name)
 {
-	if (!bup_begin()) return;
-	if (bup_ready()) BUP_Delete((uint32_t)s_device, (uint8_t *)name);
-	bup_end();
+	if (!Backup_Begin()) return;
+	if (Backup_Ready()) BUP_Delete((uint32_t)s_device, (uint8_t *)name);
+	Backup_End();
 }

@@ -3,11 +3,11 @@
  * On an exception the SH-2 pushes SR, then PC, on the current stack. Each
  * stub loads its vector number and jumps to the common part, which reads
  * PC and SR, switches to an emergency stack (the faulting one may be the
- * problem) and calls crash_report(vector, pc, sr, sp). It never returns. */
+ * problem) and calls Crash_Report(vector, pc, sr, sp). It never returns. */
 
 	.macro	CRASH_STUB vector
-	.global	_crash_entry_\vector
-_crash_entry_\vector:
+	.global	_Crash_Entry\vector
+_Crash_Entry\vector:
 	bra	crash_common
 	mov	#\vector, r4
 	.endm
@@ -29,7 +29,7 @@ crash_common:
 
 	.align	2
 emergency_stack:	.long	crash_stack_end
-crash_report_ptr:	.long	_crash_report
+crash_report_ptr:	.long	_Crash_Report
 
 	.bss
 	.align	2

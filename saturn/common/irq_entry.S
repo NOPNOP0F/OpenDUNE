@@ -25,5 +25,5 @@
 	.endm
 
 	.text
-	IRQ_ENTRY _saturn_vblank_in_entry, _saturn_vblank_in
-	IRQ_ENTRY _scsp_timer_entry, _scsp_timer_interrupt
+	IRQ_ENTRY _SaturnTimer_VBlankInEntry, _SaturnTimer_VBlankIn
+	IRQ_ENTRY _Scsp_TimerEntry, _Scsp_TimerInterrupt

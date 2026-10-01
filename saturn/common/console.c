@@ -22,10 +22,10 @@ static int s_row, s_column;
 /* Everything written, the last CONSOLE_LOG_SIZE bytes of it, for reading out
  * of an emulator's memory dump (saturn/tools/ymir-dump.py finds it through
  * the link map). */
-char console_log[CONSOLE_LOG_SIZE];
-uint32_t console_log_written;
+char g_consoleLog[CONSOLE_LOG_SIZE];
+uint32_t g_consoleLogWritten;
 
-static void draw_char(int row, int column)
+static void Console_DrawChar(int row, int column)
 {
 	const uint8_t *glyph;
 	volatile uint8_t *dst = VDP2_BITMAP + row * 8 * VDP2_BITMAP_PITCH + column * 8;
@@ -39,15 +39,15 @@ static void draw_char(int row, int column)
 	}
 }
 
-static void draw_all(void)
+static void Console_DrawAll(void)
 {
 	int row, column;
 	for (row = 0; row < ROWS; row++) {
-		for (column = 0; column < COLUMNS; column++) draw_char(row, column);
+		for (column = 0; column < COLUMNS; column++) Console_DrawChar(row, column);
 	}
 }
 
-static void new_line(void)
+static void Console_NewLine(void)
 {
 	s_column = 0;
 	if (++s_row < ROWS) return;
@@ -55,53 +55,53 @@ static void new_line(void)
 	memmove(s_text[0], s_text[1], sizeof(s_text) - sizeof(s_text[0]));
 	memset(s_text[ROWS - 1], ' ', COLUMNS);
 	s_row = ROWS - 1;
-	if (s_state == CONSOLE_SHOWN) draw_all();
+	if (s_state == CONSOLE_SHOWN) Console_DrawAll();
 }
 
-const uint8_t *console_glyph(char c)
+const uint8_t *Console_Glyph(char c)
 {
 	unsigned char u = (unsigned char)c;
 	if (u < 32 || u > 126) u = ' ';
 	return s_font8x8[u - 32];
 }
 
-void console_show(void)
+void Console_Show(void)
 {
 	if (s_state == CONSOLE_OFF) memset(s_text, ' ', sizeof(s_text));
 	s_state = CONSOLE_SHOWN;
 
-	vdp2_bitmap_init();
-	vdp2_set_color(COLOR_BACK, RGB555(0, 0, 8));
-	vdp2_set_color(COLOR_TEXT, RGB555(31, 31, 31));
-	draw_all();
-	vdp2_display_on();
+	Vdp2_BitmapInit();
+	Vdp2_SetColor(COLOR_BACK, RGB555(0, 0, 8));
+	Vdp2_SetColor(COLOR_TEXT, RGB555(31, 31, 31));
+	Console_DrawAll();
+	Vdp2_DisplayOn();
 }
 
-void console_release(void)
+void Console_Release(void)
 {
 	if (s_state == CONSOLE_OFF) memset(s_text, ' ', sizeof(s_text));
 	s_state = CONSOLE_RELEASED;
 }
 
-void console_write(const char *text, int length)
+void Console_Write(const char *text, int length)
 {
 	int i;
 
-	if (s_state == CONSOLE_OFF) console_show();
+	if (s_state == CONSOLE_OFF) Console_Show();
 
-	for (i = 0; i < length; i++) console_log[(console_log_written + (uint32_t)i) % CONSOLE_LOG_SIZE] = text[i];
-	console_log_written += (uint32_t)length;
+	for (i = 0; i < length; i++) g_consoleLog[(g_consoleLogWritten + (uint32_t)i) % CONSOLE_LOG_SIZE] = text[i];
+	g_consoleLogWritten += (uint32_t)length;
 
 	for (i = 0; i < length; i++) {
 		char c = text[i];
 		if (c == '\n') {
-			new_line();
+			Console_NewLine();
 			continue;
 		}
 		if (c == '\r') continue;
-		if (s_column == COLUMNS) new_line();
+		if (s_column == COLUMNS) Console_NewLine();
 		s_text[s_row][s_column] = c;
-		if (s_state == CONSOLE_SHOWN) draw_char(s_row, s_column);
+		if (s_state == CONSOLE_SHOWN) Console_DrawChar(s_row, s_column);
 		s_column++;
 	}
 }

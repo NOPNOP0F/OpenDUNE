@@ -938,7 +938,7 @@ void GameLoop_GameEndAnimation(void)
 	uint16 sound;
 
 #if defined(SATURN)
-	loading_enable(0);      /* reading as it goes, with its own pictures */
+	Loading_Enable(0);      /* reading as it goes, with its own pictures */
 #endif
 	Voice_LoadVoices(0xFFFE);
 
@@ -978,7 +978,7 @@ void GameLoop_GameEndAnimation(void)
 
 	GameLoop_GameCredits();
 #if defined(SATURN)
-	loading_enable(1);
+	Loading_Enable(1);
 #endif
 }
 
@@ -1066,7 +1066,7 @@ logos_exit:
 void GameLoop_GameIntroAnimation(void)
 {
 #if defined(SATURN)
-	loading_enable(0);      /* reading as it goes, with its own pictures */
+	Loading_Enable(0);      /* reading as it goes, with its own pictures */
 #endif
 	GUI_ChangeSelectionType(SELECTIONTYPE_INTRO);
 
@@ -1091,6 +1091,6 @@ void GameLoop_GameIntroAnimation(void)
 
 	GUI_ChangeSelectionType(SELECTIONTYPE_MENTAT);
 #if defined(SATURN)
-	loading_enable(1);
+	Loading_Enable(1);
 #endif
 }

@@ -95,12 +95,12 @@ typedef struct VramSlot {
 static VramSlot s_vram[VRAM_SLOTS];
 static uint32_t s_vramClock = 0;
 
-static volatile uint32_t *vram_slot(int i)
+static volatile uint32_t *Files_VramSlot(int i)
 {
 	return (volatile uint32_t *)(VDP1_VRAM + (uint32_t)(i + 1) * SECTOR_SIZE);
 }
 
-static void vram_init(void)
+static void Files_VramInit(void)
 {
 	int i;
 	VDP1_PTMR = 0;                                  /* no drawing */
@@ -108,7 +108,7 @@ static void vram_init(void)
 	for (i = 0; i < VRAM_SLOTS; i++) s_vram[i].fid = -1;
 }
 
-static int vram_find(int32_t fid, uint32_t sector)
+static int Files_VramFind(int32_t fid, uint32_t sector)
 {
 	int i;
 	for (i = 0; i < VRAM_SLOTS; i++) {
@@ -120,13 +120,13 @@ static int vram_find(int32_t fid, uint32_t sector)
 	return -1;
 }
 
-static void vram_store(int32_t fid, uint32_t sector, const uint8_t *data)
+static void Files_VramStore(int32_t fid, uint32_t sector, const uint8_t *data)
 {
 	volatile uint32_t *dst;
 	const uint32_t *src = (const uint32_t *)data;
 	int i, oldest = 0;
 
-	if (vram_find(fid, sector) >= 0) return;
+	if (Files_VramFind(fid, sector) >= 0) return;
 	for (i = 0; i < VRAM_SLOTS; i++) {
 		if (s_vram[i].fid < 0) {
 			oldest = i;
@@ -134,28 +134,28 @@ static void vram_store(int32_t fid, uint32_t sector, const uint8_t *data)
 		}
 		if (s_vram[i].used < s_vram[oldest].used) oldest = i;
 	}
-	dst = vram_slot(oldest);
+	dst = Files_VramSlot(oldest);
 	for (i = 0; i < SECTOR_SIZE / 4; i++) dst[i] = src[i];
 	s_vram[oldest].fid = fid;
 	s_vram[oldest].sector = sector;
 	s_vram[oldest].used = ++s_vramClock;
 }
 
-static void vram_load(int slot, uint8_t *data)
+static void Files_VramLoad(int slot, uint8_t *data)
 {
-	volatile uint32_t *src = vram_slot(slot);
+	volatile uint32_t *src = Files_VramSlot(slot);
 	uint32_t *dst = (uint32_t *)data;
 	int i;
 	for (i = 0; i < SECTOR_SIZE / 4; i++) dst[i] = src[i];
 }
 
-static bool cd_init(void)
+static bool Files_CdInit(void)
 {
 	if (s_cdReady) return true;
 
 	s_cache = malloc(CACHE_SECTORS * SECTOR_SIZE);
 	if (s_cache == NULL) return false;
-	vram_init();
+	Files_VramInit();
 
 	GFS_DIRTBL_TYPE(&s_dirTable) = GFS_DIR_NAME;
 	GFS_DIRTBL_DIRNAME(&s_dirTable) = s_dirNames;
@@ -168,24 +168,24 @@ static bool cd_init(void)
 }
 
 /* Last component of a path. */
-static const char *base_name(const char *path)
+static const char *Files_BaseName(const char *path)
 {
 	const char *slash = strrchr(path, '/');
 	return (slash != NULL) ? slash + 1 : path;
 }
 
-static bool is_cd_path(const char *path)
+static bool Files_IsCdPath(const char *path)
 {
 	return strncmp(path, FILES_CD_PREFIX, sizeof(FILES_CD_PREFIX) - 1) == 0;
 }
 
-static bool is_directory(const char *path)
+static bool Files_IsDirectory(const char *path)
 {
 	return strcmp(path, ".") == 0 || strcmp(path, "./") == 0 ||
 	       strcmp(path, "CD") == 0 || strcmp(path, FILES_CD_PREFIX) == 0;
 }
 
-static void upper_name(char *dst, const char *src, size_t size)
+static void Files_UpperName(char *dst, const char *src, size_t size)
 {
 	size_t i;
 	for (i = 0; i + 1 < size && src[i] != '\0'; i++) {
@@ -195,37 +195,37 @@ static void upper_name(char *dst, const char *src, size_t size)
 	dst[i] = '\0';
 }
 
-static int32_t cd_find(const char *path)
+static int32_t Files_CdFind(const char *path)
 {
 	char name[GFS_FNAME_LEN + 1];
-	if (!cd_init()) return -1;
-	upper_name(name, path + sizeof(FILES_CD_PREFIX) - 1, sizeof(name));
+	if (!Files_CdInit()) return -1;
+	Files_UpperName(name, path + sizeof(FILES_CD_PREFIX) - 1, sizeof(name));
 	return GFS_NameToId((Sint8 *)name);
 }
 
-static uint32_t cd_size(int32_t fid)
+static uint32_t Files_CdSize(int32_t fid)
 {
 	return (uint32_t)GFS_DIR_SIZE(&s_dirNames[fid]);
 }
 
-static RamFile *ram_find(const char *path)
+static RamFile *Files_RamFind(const char *path)
 {
 	char name[NAME_MAX_LENGTH + 1];
 	int i;
-	upper_name(name, base_name(path), sizeof(name));
+	Files_UpperName(name, Files_BaseName(path), sizeof(name));
 	for (i = 0; i < RAM_FILE_MAX; i++) {
 		if (s_ramFiles[i].name[0] != '\0' && !s_ramFiles[i].deleted && strcmp(s_ramFiles[i].name, name) == 0) return &s_ramFiles[i];
 	}
 	return NULL;
 }
 
-static RamFile *ram_create(const char *path)
+static RamFile *Files_RamCreate(const char *path)
 {
 	int i;
 	for (i = 0; i < RAM_FILE_MAX; i++) {
 		RamFile *f = &s_ramFiles[i];
 		if (f->name[0] != '\0') continue;
-		upper_name(f->name, base_name(path), sizeof(f->name));
+		Files_UpperName(f->name, Files_BaseName(path), sizeof(f->name));
 		f->data = NULL;
 		f->size = f->capacity = 0;
 		return f;
@@ -233,7 +233,7 @@ static RamFile *ram_create(const char *path)
 	return NULL;
 }
 
-static void ram_free(RamFile *r)
+static void Files_RamFree(RamFile *r)
 {
 	free(r->data);
 	memset(r, 0, sizeof(*r));
@@ -241,9 +241,9 @@ static void ram_free(RamFile *r)
 
 /* Name in backup memory: "D2_" and up to 8 letters and digits of the file
  * name, before the extension ("_save000.dat" -> "D2_SAVE000"). */
-static void backup_name(const char *path, char name[BACKUP_NAME_LENGTH + 1])
+static void Files_BackupName(const char *path, char name[BACKUP_NAME_LENGTH + 1])
 {
-	const char *src = base_name(path);
+	const char *src = Files_BaseName(path);
 	int length = 3;
 
 	memcpy(name, "D2_", 3);
@@ -256,16 +256,16 @@ static void backup_name(const char *path, char name[BACKUP_NAME_LENGTH + 1])
 }
 
 /* Read a personal file in from backup memory, if it is there. */
-static RamFile *ram_load(const char *path)
+static RamFile *Files_RamLoad(const char *path)
 {
 	char name[BACKUP_NAME_LENGTH + 1];
 	uint8_t *data;
 	uint32_t size;
 	RamFile *r;
 
-	backup_name(path, name);
-	if (!backup_read(name, &data, &size)) return NULL;
-	r = ram_create(path);
+	Files_BackupName(path, name);
+	if (!Backup_Read(name, &data, &size)) return NULL;
+	r = Files_RamCreate(path);
 	if (r == NULL) {
 		free(data);
 		return NULL;
@@ -277,25 +277,25 @@ static RamFile *ram_load(const char *path)
 }
 
 /* Write a changed personal file to backup memory. */
-static bool ram_store(RamFile *r)
+static bool Files_RamStore(RamFile *r)
 {
 	char name[BACKUP_NAME_LENGTH + 1];
 
-	backup_name(r->name, name);
-	if (!backup_write(name, "Dune II", r->data, r->size)) return false;
+	Files_BackupName(r->name, name);
+	if (!Backup_Write(name, "Dune II", r->data, r->size)) return false;
 	r->changed = false;
 	r->stored = true;
 	return true;
 }
 
-static Fd *fd_get(int fd)
+static Fd *Files_FdGet(int fd)
 {
 	if (fd < FD_FIRST || fd >= FD_FIRST + FD_COUNT) return NULL;
 	if (s_fds[fd - FD_FIRST].kind == FD_FREE) return NULL;
 	return &s_fds[fd - FD_FIRST];
 }
 
-static int fd_alloc(void)
+static int Files_FdAlloc(void)
 {
 	int i;
 	for (i = 0; i < FD_COUNT; i++) {
@@ -304,10 +304,10 @@ static int fd_alloc(void)
 	return -1;
 }
 
-int files_cd_list(int (*callback)(const char *name, uint32_t size, void *data), void *data)
+int Files_CdList(int (*callback)(const char *name, uint32_t size, void *data), void *data)
 {
 	int32_t i;
-	if (!cd_init()) return 0;
+	if (!Files_CdInit()) return 0;
 
 	/* Entries 0 and 1 are the directory itself and its parent. The root
 	 * holds no other directories. (The attribute byte can't tell: plain
@@ -319,14 +319,14 @@ int files_cd_list(int (*callback)(const char *name, uint32_t size, void *data), 
 		name[GFS_FNAME_LEN] = '\0';
 		version = strchr(name, ';');
 		if (version != NULL) *version = '\0';
-		if (!callback(name, cd_size(i), data)) break;
+		if (!callback(name, Files_CdSize(i), data)) break;
 	}
 	return 1;
 }
 
 int _open(const char *path, int flags, int mode)
 {
-	int fd = fd_alloc();
+	int fd = Files_FdAlloc();
 	Fd *f;
 	(void)mode;
 
@@ -338,12 +338,12 @@ int _open(const char *path, int flags, int mode)
 	memset(f, 0, sizeof(*f));
 	f->flags = flags;
 
-	if (is_cd_path(path)) {
+	if (Files_IsCdPath(path)) {
 		if ((flags & O_ACCMODE) != O_RDONLY) {
 			errno = EROFS;
 			return -1;
 		}
-		f->fid = cd_find(path);
+		f->fid = Files_CdFind(path);
 		if (f->fid < 0) {
 			errno = ENOENT;
 			return -1;
@@ -353,19 +353,19 @@ int _open(const char *path, int flags, int mode)
 			errno = EIO;
 			return -1;
 		}
-		f->size = cd_size(f->fid);
+		f->size = Files_CdSize(f->fid);
 		f->kind = FD_CD;
 		return fd;
 	}
 
-	f->ram = ram_find(path);
-	if (f->ram == NULL && (flags & O_TRUNC) == 0) f->ram = ram_load(path);
+	f->ram = Files_RamFind(path);
+	if (f->ram == NULL && (flags & O_TRUNC) == 0) f->ram = Files_RamLoad(path);
 	if (f->ram == NULL) {
 		if ((flags & O_CREAT) == 0) {
 			errno = ENOENT;
 			return -1;
 		}
-		f->ram = ram_create(path);
+		f->ram = Files_RamCreate(path);
 		if (f->ram == NULL) {
 			errno = ENOSPC;
 			return -1;
@@ -383,7 +383,7 @@ int _open(const char *path, int flags, int mode)
 
 int _close(int fd)
 {
-	Fd *f = fd_get(fd);
+	Fd *f = Files_FdGet(fd);
 	if (f == NULL) {
 		errno = EBADF;
 		return -1;
@@ -392,14 +392,14 @@ int _close(int fd)
 		GFS_Close(f->gfs);
 	} else {
 		RamFile *r = f->ram;
-		bool ok = r->deleted || !r->changed || ram_store(r);
+		bool ok = r->deleted || !r->changed || Files_RamStore(r);
 
 		f->kind = FD_FREE;
 		r->opens--;
 		if (r->opens == 0 && (r->stored || r->deleted || !ok)) {
 			/* stored: backup memory has it; not stored: it didn't fit, and
 			 * shouldn't look saved */
-			ram_free(r);
+			Files_RamFree(r);
 		}
 		if (!ok) {
 			errno = ENOSPC;
@@ -410,7 +410,7 @@ int _close(int fd)
 	return 0;
 }
 
-static int cd_read(Fd *f, uint8_t *buffer, uint32_t length)
+static int Files_CdRead(Fd *f, uint8_t *buffer, uint32_t length)
 {
 	uint32_t done = 0;
 
@@ -422,11 +422,11 @@ static int cd_read(Fd *f, uint8_t *buffer, uint32_t length)
 		uint32_t offset, chunk;
 
 		if (s_cacheFid != f->fid || sector < s_cacheFirst || sector >= s_cacheFirst + s_cacheCount) {
-			int slot = vram_find(f->fid, sector);
+			int slot = Files_VramFind(f->fid, sector);
 
 			if (slot >= 0) {
 				/* read before: from VDP1's VRAM */
-				vram_load(slot, s_cache);
+				Files_VramLoad(slot, s_cache);
 				s_cacheFid = f->fid;
 				s_cacheFirst = sector;
 				s_cacheCount = 1;
@@ -437,18 +437,18 @@ static int cd_read(Fd *f, uint8_t *buffer, uint32_t length)
 
 				if (count > CACHE_SECTORS) count = CACHE_SECTORS;
 				s_cacheFid = -1;
-				loading_disc(1);
+				Loading_Disc(1);
 				if (GFS_Seek(f->gfs, (Sint32)sector, GFS_SEEK_SET) < 0) {
-					loading_disc(0);
+					Loading_Disc(0);
 					break;
 				}
 				got = GFS_Fread(f->gfs, (Sint32)count, s_cache, (Sint32)(count * SECTOR_SIZE));
-				loading_disc(0);
+				Loading_Disc(0);
 				if (got <= 0) break;
 				s_cacheFid = f->fid;
 				s_cacheFirst = sector;
 				s_cacheCount = ((uint32_t)got + SECTOR_SIZE - 1) / SECTOR_SIZE;
-				for (i = 0; i < s_cacheCount; i++) vram_store(f->fid, sector + i, s_cache + i * SECTOR_SIZE);
+				for (i = 0; i < s_cacheCount; i++) Files_VramStore(f->fid, sector + i, s_cache + i * SECTOR_SIZE);
 			}
 		}
 
@@ -469,14 +469,14 @@ static int cd_read(Fd *f, uint8_t *buffer, uint32_t length)
 
 int _read(int fd, void *buffer, size_t length)
 {
-	Fd *f = fd_get(fd);
+	Fd *f = Files_FdGet(fd);
 	uint32_t count;
 
 	if (f == NULL || (f->flags & O_ACCMODE) == O_WRONLY) {
 		errno = EBADF;
 		return -1;
 	}
-	if (f->kind == FD_CD) return cd_read(f, buffer, (uint32_t)length);
+	if (f->kind == FD_CD) return Files_CdRead(f, buffer, (uint32_t)length);
 
 	if (f->position >= f->ram->size) return 0;
 	count = f->ram->size - f->position;
@@ -486,9 +486,9 @@ int _read(int fd, void *buffer, size_t length)
 	return (int)count;
 }
 
-int files_write(int fd, const void *buffer, size_t length)
+int Files_Write(int fd, const void *buffer, size_t length)
 {
-	Fd *f = fd_get(fd);
+	Fd *f = Files_FdGet(fd);
 	RamFile *r;
 
 	if (f == NULL || f->kind != FD_RAM || (f->flags & O_ACCMODE) == O_RDONLY) {
@@ -521,7 +521,7 @@ int files_write(int fd, const void *buffer, size_t length)
 
 off_t _lseek(int fd, off_t offset, int whence)
 {
-	Fd *f = fd_get(fd);
+	Fd *f = Files_FdGet(fd);
 	off_t base;
 
 	if (f == NULL) {
@@ -551,7 +551,7 @@ int _fstat(int fd, struct stat *st)
 		st->st_mode = S_IFCHR;
 		return 0;
 	}
-	f = fd_get(fd);
+	f = Files_FdGet(fd);
 	if (f == NULL) {
 		errno = EBADF;
 		return -1;
@@ -565,25 +565,25 @@ int _fstat(int fd, struct stat *st)
 int _stat(const char *path, struct stat *st)
 {
 	memset(st, 0, sizeof(*st));
-	if (is_directory(path)) {
+	if (Files_IsDirectory(path)) {
 		st->st_mode = S_IFDIR;
 		return 0;
 	}
-	if (is_cd_path(path)) {
-		int32_t fid = cd_find(path);
+	if (Files_IsCdPath(path)) {
+		int32_t fid = Files_CdFind(path);
 		if (fid < 0) {
 			errno = ENOENT;
 			return -1;
 		}
 		st->st_mode = S_IFREG;
-		st->st_size = (off_t)cd_size(fid);
+		st->st_size = (off_t)Files_CdSize(fid);
 		return 0;
 	} else {
-		RamFile *r = ram_find(path);
+		RamFile *r = Files_RamFind(path);
 		bool loaded = false;
 
 		if (r == NULL) {
-			r = ram_load(path);
+			r = Files_RamLoad(path);
 			loaded = true;
 		}
 		if (r == NULL) {
@@ -592,7 +592,7 @@ int _stat(const char *path, struct stat *st)
 		}
 		st->st_mode = S_IFREG;
 		st->st_size = (off_t)r->size;
-		if (loaded) ram_free(r);
+		if (loaded) Files_RamFree(r);
 		return 0;
 	}
 }
@@ -601,17 +601,17 @@ int _unlink(const char *path)
 {
 	RamFile *r;
 	char name[BACKUP_NAME_LENGTH + 1];
-	if (is_cd_path(path)) {
+	if (Files_IsCdPath(path)) {
 		errno = EROFS;
 		return -1;
 	}
-	r = ram_find(path);
+	r = Files_RamFind(path);
 	if (r != NULL) {
 		/* descriptors still open keep it until they are closed */
 		if (r->opens > 0) r->deleted = true;
-		else ram_free(r);
+		else Files_RamFree(r);
 	}
-	backup_name(path, name);
-	backup_delete(name);
+	Files_BackupName(path, name);
+	Backup_Delete(name);
 	return 0;
 }

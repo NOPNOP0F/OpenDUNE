@@ -8,29 +8,29 @@
 
 #include <stdint.h>
 
-/* Set up the waveforms and slots; needs scsp_init() and saturn_timer_init(). */
-extern int opl_scsp_init(void);
+/* Set up the waveforms and slots; needs Scsp_Init() and SaturnTimer_Init(). */
+extern int OplScsp_Init(void);
 
 /* One OPL2 register write. */
-extern void opl_scsp_write(uint8_t reg, uint8_t val);
+extern void OplScsp_Write(uint8_t reg, uint8_t val);
 
 /* End of a driver tick: carry out its key offs (see opl_scsp.c). */
-extern void opl_scsp_flush(void);
+extern void OplScsp_Flush(void);
 
 /* Run the software envelopes (slow attacks); call as often as possible,
  * at least every few milliseconds. */
-extern void opl_scsp_update(void);
+extern void OplScsp_Update(void);
 
 /* Extra attenuation (0.375 dB units, 255: silent) for channels first..last,
  * for volume and fades. */
-extern void opl_scsp_set_attenuation(int first, int last, uint8_t attenuation);
+extern void OplScsp_SetAttenuation(int first, int last, uint8_t attenuation);
 
 /* Envelope mapping for tuning by ear: SCSP attack rate = OPL effective
  * rate / 2 + attackOffset (default 1), decay/release = OPL effective
  * rate / 2 + decayQuarters / 4 (default 9). */
-extern void opl_scsp_tune(int attackOffset, int decayQuarters);
+extern void OplScsp_Tune(int attackOffset, int decayQuarters);
 
 /* Silence all OPL voices. */
-extern void opl_scsp_reset(void);
+extern void OplScsp_Reset(void);
 
 #endif /* SATURN_OPL_SCSP_H */

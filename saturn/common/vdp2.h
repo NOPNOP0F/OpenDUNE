@@ -19,13 +19,13 @@ enum {
 /* Pixel (0, 0) of the NBG0 bitmap in VRAM. */
 #define VDP2_BITMAP ((volatile uint8_t *)0x25E00000UL)
 
-extern void vdp2_bitmap_init(void);
-extern void vdp2_display_on(void);
-extern void vdp2_vblank_wait(void);
-extern void vdp2_set_color(int index, uint16_t rgb555);
-extern void vdp2_set_scroll_y(int y);
+extern void Vdp2_BitmapInit(void);
+extern void Vdp2_DisplayOn(void);
+extern void Vdp2_VBlankWait(void);
+extern void Vdp2_SetColor(int index, uint16_t rgb555);
+extern void Vdp2_SetScrollY(int y);
 
 /* Set a pixel of the overlay, in front of the bitmap (VDP2_OVERLAY_*). */
-extern void vdp2_overlay_pixel(int x, int y, int colour);
+extern void Vdp2_OverlayPixel(int x, int y, int colour);
 
 #endif /* SATURN_VDP2_H */

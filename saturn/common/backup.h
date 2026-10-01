@@ -17,22 +17,22 @@ enum {
 };
 
 /* Whether a backup cartridge is connected. */
-extern int backup_has_cartridge(void);
+extern int Backup_HasCartridge(void);
 
 /* Free bytes on a device, or -1 if it isn't there. */
-extern int32_t backup_free(int device);
+extern int32_t Backup_Free(int device);
 
 /* Use this device from now on (BACKUP_INTERNAL by default). */
-extern void backup_select(int device);
+extern void Backup_Select(int device);
 
 /* Read a file into memory from malloc(); returns 0 if there is none (or it
  * can't be read). */
-extern int backup_read(const char *name, uint8_t **data, uint32_t *size);
+extern int Backup_Read(const char *name, uint8_t **data, uint32_t *size);
 
 /* Write (or replace) a file; comment is shown by the BIOS's memory manager
  * (up to 10 characters). Returns 0 if it doesn't fit. */
-extern int backup_write(const char *name, const char *comment, const uint8_t *data, uint32_t size);
+extern int Backup_Write(const char *name, const char *comment, const uint8_t *data, uint32_t size);
 
-extern void backup_delete(const char *name);
+extern void Backup_Delete(const char *name);
 
 #endif /* SATURN_BACKUP_H */

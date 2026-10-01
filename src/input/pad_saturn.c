@@ -186,7 +186,7 @@ static bool s_reticleSnap = false;                  /* follow at once (the free 
 
 void PadSaturn_Init(void)
 {
-	saturn_timer_set_vblank_hook(smpc_vblank);
+	SaturnTimer_SetVBlankHook(Smpc_VBlank);
 }
 
 static void PadSaturn_Clamp(void)
@@ -239,7 +239,7 @@ static void PadSaturn_UseSound(void)
 {
 	if (g_gameConfig.sounds == 0) return;
 	DSP_Saturn_Blip(DSP_BLIP_USE);
-	s_secondNoteFrame = saturn_timer_frames() + 4;
+	s_secondNoteFrame = SaturnTimer_Frames() + 4;
 }
 
 /* Queue a Dune II key code as a press and a release: a key still down in
@@ -334,7 +334,7 @@ static void PadSaturn_Keys(bool mouse)
 	uint8 key;
 	int make;
 
-	while (smpc_key_event(&key, &make)) {
+	while (Smpc_KeyEvent(&key, &make)) {
 		uint8 scancode;
 
 		if (!mouse && key == KEY_SPACE) {
@@ -358,7 +358,7 @@ static void PadSaturn_KeyboardMouse(const SmpcDevice d[2])
 
 	PadSaturn_Keys(true);
 
-	smpc_mouse_motion(&dx, &dy);
+	Smpc_MouseMotion(&dx, &dy);
 	if (dx != 0 || dy != 0) {
 		s_x += dx;
 		s_y -= dy;
@@ -446,7 +446,7 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 
 	if (pressed & PAD_A) {
 		s_pressA = true;
-		if (s_useSound && saturn_timer_frames() - s_handledFrame <= FOCUS_STALE) PadSaturn_UseSound();
+		if (s_useSound && SaturnTimer_Frames() - s_handledFrame <= FOCUS_STALE) PadSaturn_UseSound();
 	}
 
 	/* the D-pad: requests for the focus and camera, repeating when held;
@@ -496,7 +496,7 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 	}
 
 	/* A: a click, or on a list the key that opens the selected line */
-	if (s_keyA != 0 && saturn_timer_frames() - s_handledFrame <= FOCUS_STALE) {
+	if (s_keyA != 0 && SaturnTimer_Frames() - s_handledFrame <= FOCUS_STALE) {
 		if (pressed & PAD_A) PadSaturn_Key(s_keyA);
 		pad &= ~PAD_A;
 		pressed &= ~PAD_A;
@@ -577,10 +577,10 @@ static void PadSaturn_Brackets(int x, int y, int w, int h, int light, int dark)
 		for (t = -1; t <= 1; t++) {
 			int c = (t == -1 || i == -1) ? dark : light;
 			/* horizontal arms, then vertical ones, at each corner */
-			vdp2_overlay_pixel(x + i, y + t, c);  vdp2_overlay_pixel(x1 - i, y + t, c);
-			vdp2_overlay_pixel(x + i, y1 - t, c); vdp2_overlay_pixel(x1 - i, y1 - t, c);
-			vdp2_overlay_pixel(x + t, y + i, c);  vdp2_overlay_pixel(x1 - t, y + i, c);
-			vdp2_overlay_pixel(x + t, y1 - i, c); vdp2_overlay_pixel(x1 - t, y1 - i, c);
+			Vdp2_OverlayPixel(x + i, y + t, c);  Vdp2_OverlayPixel(x1 - i, y + t, c);
+			Vdp2_OverlayPixel(x + i, y1 - t, c); Vdp2_OverlayPixel(x1 - i, y1 - t, c);
+			Vdp2_OverlayPixel(x + t, y + i, c);  Vdp2_OverlayPixel(x1 - t, y + i, c);
+			Vdp2_OverlayPixel(x + t, y1 - i, c); Vdp2_OverlayPixel(x1 - t, y1 - i, c);
 		}
 	}
 }
@@ -651,7 +651,7 @@ void PadSaturn_Tick(void)
 	int port = 0;
 	Controller controller;
 
-	smpc_devices(d);
+	Smpc_Devices(d);
 	controller = PadSaturn_Detect(d, &port);
 	if (controller == CONTROLLER_NONE) {
 		/* not at once: the first frames after power on have no data yet */
@@ -671,7 +671,7 @@ void PadSaturn_Tick(void)
 		default: PadSaturn_Buttons(&d[port], controller); break;
 	}
 
-	if (s_secondNoteFrame != 0 && saturn_timer_frames() >= s_secondNoteFrame) {
+	if (s_secondNoteFrame != 0 && SaturnTimer_Frames() >= s_secondNoteFrame) {
 		s_secondNoteFrame = 0;
 		DSP_Saturn_Blip(DSP_BLIP_FOCUS);
 	}
@@ -679,7 +679,7 @@ void PadSaturn_Tick(void)
 	/* the pointer only with a mouse; the reticle only while the focus or
 	 * the camera is being looked after */
 	PadSaturn_SetPointer(controller == CONTROLLER_KEYBOARD_MOUSE);
-	if (controller == CONTROLLER_KEYBOARD_MOUSE || saturn_timer_frames() - s_handledFrame > FOCUS_STALE) {
+	if (controller == CONTROLLER_KEYBOARD_MOUSE || SaturnTimer_Frames() - s_handledFrame > FOCUS_STALE) {
 		PadSaturn_SetReticle(0, 0, 0, 0);
 	}
 	PadSaturn_ReticleTick();
@@ -793,10 +793,10 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 	}
 	if (!hasList) return false;
 
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	pressB = s_pressB;
 	s_pressB = false;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 	if (pressB && !fresh && exitButton != NULL) {
 		/* B: a click on Exit, as A there would */
 		PadSaturn_WidgetPosition(exitButton, &x, &y);
@@ -816,12 +816,12 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 
 	/* the 3D Controller's stick moves the selection too, a line each time
 	 * enough travel has been summed up (without the blip) */
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	stick = s_stickY;
 	if (stick >= STICK_STEP) s_stickY -= STICK_STEP;
 	else if (stick <= -STICK_STEP) s_stickY += STICK_STEP;
 	s_stickX = 0;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 	s_stickLast = false;
 
 	if (s_focus == NULL || s_focus->clickProc != &GUI_Mentat_List_Click) {
@@ -918,17 +918,17 @@ static void PadSaturn_StickScroll(Widget *list)
 		if (w->clickProc == &GUI_Mentat_List_Click) return;
 	}
 
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	sy = s_stickY;
 	s_stickX = 0;
 	s_stickY = 0;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 	s_stickLast = false;
 	if (sy > -STICK_STEP && sy < STICK_STEP) {
 		/* keep what isn't a line yet */
-		sr = cpu_interrupts_disable();
+		sr = Cpu_DisableInterrupts();
 		s_stickY += sy;
-		cpu_interrupts_restore(sr);
+		Cpu_RestoreInterrupts(sr);
 		return;
 	}
 
@@ -938,9 +938,9 @@ static void PadSaturn_StickScroll(Widget *list)
 		else GUI_Widget_Scrollbar_ArrowDown_Click(w);
 		break;
 	}
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	s_stickY += (sy < 0) ? sy + STICK_STEP : sy - STICK_STEP;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 }
 
 /* Put the reticle on the focused widget. */
@@ -1007,7 +1007,7 @@ static void PadSaturn_CameraStep(int dx, int dy)
 static void PadSaturn_FreeCameraTick(void)
 {
 	static uint32 lastScroll = 0;
-	uint32 frames = saturn_timer_frames();
+	uint32 frames = SaturnTimer_Frames();
 	int movedX, movedY;
 
 	if (s_x < VIEW_LEFT || s_x > VIEW_RIGHT || s_y < VIEW_TOP || s_y > VIEW_BOTTOM) {
@@ -1036,12 +1036,12 @@ static void PadSaturn_Camera(void)
 	}
 	s_reticleSnap = false;
 
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	direction = s_scroll;
 	s_scroll = NO_DIRECTION;
 	sx = s_stickX;
 	sy = s_stickY;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 
 	if (direction != NO_DIRECTION) PadSaturn_CameraStep(directionX[direction], directionY[direction]);
 
@@ -1050,10 +1050,10 @@ static void PadSaturn_Camera(void)
 	y = (sy >= STICK_STEP) ? 1 : (sy <= -STICK_STEP) ? -1 : 0;
 	if (x != 0 || y != 0) {
 		PadSaturn_CameraStep(x, y);
-		sr = cpu_interrupts_disable();
+		sr = Cpu_DisableInterrupts();
 		s_stickX -= x * STICK_STEP;
 		s_stickY -= y * STICK_STEP;
-		cpu_interrupts_restore(sr);
+		Cpu_RestoreInterrupts(sr);
 	}
 
 	x = CAMERA_X + s_cameraTileX * 16;
@@ -1113,7 +1113,7 @@ void PadSaturn_HandleEvents(Widget *list)
 	uint32 sr;
 
 	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
-	s_handledFrame = saturn_timer_frames();
+	s_handledFrame = SaturnTimer_Frames();
 	s_keyA = 0;
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE) {
 		s_focusActive = false;
@@ -1131,12 +1131,12 @@ void PadSaturn_HandleEvents(Widget *list)
 	fresh = list != lastList || (list != g_widgetLinkedListHead && layout != lastLayout);
 	lastLayout = layout;
 
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	if (s_toggleCamera && mission && s_controller != CONTROLLER_3D) s_camera = !s_camera;
 	s_toggleCamera = false;
 	direction = s_navigate;
 	s_navigate = NO_DIRECTION;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 
 	/* the camera: targeting or placing, chosen with C, or the stick used last */
 	camera = mission && (targeting || (s_controller == CONTROLLER_3D ? s_stickLast : s_camera));
@@ -1202,7 +1202,7 @@ void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeig
 	uint32 sr;
 
 	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
-	s_handledFrame = saturn_timer_frames();
+	s_handledFrame = SaturnTimer_Frames();
 	s_keyA = 0;
 	s_useSound = true;
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE || lines == 0) {
@@ -1210,11 +1210,11 @@ void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeig
 		return;
 	}
 
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	direction = s_navigate;
 	s_navigate = NO_DIRECTION;
 	s_toggleCamera = false;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 	s_focusActive = true;
 	s_cameraActive = false;
 	PadSaturn_SetReticle(0, 0, 0, 0);       /* the focused line changes colour */
@@ -1247,22 +1247,22 @@ int PadSaturn_PickRegion(const int16 *x, const int16 *y, const bool *usable, int
 	int i;
 
 	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
-	if (saturn_timer_frames() - s_handledFrame > FOCUS_STALE) {
+	if (SaturnTimer_Frames() - s_handledFrame > FOCUS_STALE) {
 		focus = -1;     /* a new map */
 		PadSaturn_NewScreen();
 	}
-	s_handledFrame = saturn_timer_frames();
+	s_handledFrame = SaturnTimer_Frames();
 	s_keyA = 0;
 	s_useSound = true;
 	if (s_controller == CONTROLLER_KEYBOARD_MOUSE || s_controller == CONTROLLER_NONE) return -1;
 
-	sr = cpu_interrupts_disable();
+	sr = Cpu_DisableInterrupts();
 	direction = s_navigate;
 	s_navigate = NO_DIRECTION;
 	pressA = s_pressA;
 	s_pressA = false;
 	s_toggleCamera = false;
-	cpu_interrupts_restore(sr);
+	Cpu_RestoreInterrupts(sr);
 	s_focusActive = true;
 	s_cameraActive = false;
 

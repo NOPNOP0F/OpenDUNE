@@ -993,8 +993,8 @@ static void GameLoop_Main(void)
 	Window_WidgetClick_Create();
 #if defined(SATURN)
 	/* before the first file in backup memory: where to keep them */
-	if (backup_has_cartridge()) {
-		backup_select(GUI_Saturn_AskBackupDevice(backup_free(BACKUP_INTERNAL), backup_free(BACKUP_CARTRIDGE)) ? BACKUP_CARTRIDGE : BACKUP_INTERNAL);
+	if (Backup_HasCartridge()) {
+		Backup_Select(GUI_Saturn_AskBackupDevice(Backup_Free(BACKUP_INTERNAL), Backup_Free(BACKUP_CARTRIDGE)) ? BACKUP_CARTRIDGE : BACKUP_INTERNAL);
 	}
 #endif
 	GameOptions_Load();
@@ -1322,7 +1322,7 @@ int main(int argc, char **argv)
 #if defined(SATURN)
 	/* messages only go to the log (saturn/tools/ymir-dump.py): the screen is
 	 * the game's; errors and crashes still bring the console up */
-	console_release();
+	Console_Release();
 #endif
 	CrashLog_Init();
 

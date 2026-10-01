@@ -33,8 +33,8 @@ static bool s_repaintAll = true;
 /* The VBlank interrupt: the controllers, and the loading indicator. */
 static void Video_VBlank(void)
 {
-	smpc_vblank();
-	loading_vblank();
+	Smpc_VBlank();
+	Loading_VBlank();
 }
 
 bool Video_Init(int screen_magnification, VideoScaleFilter filter)
@@ -49,11 +49,11 @@ bool Video_Init(int screen_magnification, VideoScaleFilter filter)
 	}
 
 	/* from here on the game owns the screen; the console only records */
-	console_release();
+	Console_Release();
 	PadSaturn_Init();
-	saturn_timer_set_vblank_hook(Video_VBlank);
-	vdp2_bitmap_init();
-	vdp2_display_on();
+	SaturnTimer_SetVBlankHook(Video_VBlank);
+	Vdp2_BitmapInit();
+	Vdp2_DisplayOn();
 	s_repaintAll = true;
 	return true;
 }
@@ -81,11 +81,11 @@ void Video_Tick(void)
 
 	if (s_framebuffer == NULL) return;
 
-	loading_alive();
+	Loading_Alive();
 	PadSaturn_Tick();
 
 	if (s_repaintAll) {
-		loading_screen_changed();
+		Loading_ScreenChanged();
 		Video_CopyRows(0, SCREEN_HEIGHT);
 		s_repaintAll = false;
 		GFX_Screen_SetClean(SCREEN_0);
@@ -96,7 +96,7 @@ void Video_Tick(void)
 
 	area = GFX_Screen_GetDirtyArea(SCREEN_0);
 	if (area != NULL && area->top < area->bottom) {
-		loading_screen_changed();
+		Loading_ScreenChanged();
 		Video_CopyRows(area->top, (area->bottom > SCREEN_HEIGHT) ? SCREEN_HEIGHT : area->bottom);
 	}
 	GFX_Screen_SetClean(SCREEN_0);
@@ -109,7 +109,7 @@ void Video_SetPalette(void *palette, int from, int length)
 
 	/* VGA palette entries are 6 bits per component */
 	for (i = from; i < from + length; i++, p += 3) {
-		vdp2_set_color(i, RGB555(p[0] >> 1, p[1] >> 1, p[2] >> 1));
+		Vdp2_SetColor(i, RGB555(p[0] >> 1, p[1] >> 1, p[2] >> 1));
 	}
 }
 

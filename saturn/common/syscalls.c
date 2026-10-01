@@ -66,8 +66,8 @@ void *_sbrk(ptrdiff_t increment)
 
 int _write(int fd, const void *buffer, size_t length)
 {
-	if (fd != 1 && fd != 2) return files_write(fd, buffer, length);
-	console_write(buffer, (int)length);
+	if (fd != 1 && fd != 2) return Files_Write(fd, buffer, length);
+	Console_Write(buffer, (int)length);
 	return (int)length;
 }
 
@@ -81,7 +81,7 @@ int mkdir(const char *name, mode_t mode)
 /* Time since power on; there is no calendar clock yet. */
 int _gettimeofday(struct timeval *tv, void *tz)
 {
-	uint32_t ms = saturn_timer_ms();
+	uint32_t ms = SaturnTimer_Ms();
 	(void)tz;
 	tv->tv_sec = ms / 1000;
 	tv->tv_usec = (ms % 1000) * 1000;
@@ -109,7 +109,7 @@ void _exit(int status)
 {
 	char text[32];
 	int length = snprintf(text, sizeof(text), "\nexit(%d)\n", status);
-	console_write(text, length);
-	console_show();
+	Console_Write(text, length);
+	Console_Show();
 	for (;;) {}
 }

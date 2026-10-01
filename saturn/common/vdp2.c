@@ -9,18 +9,18 @@
 #include "saturn_hw.h"
 #include "vdp2.h"
 
-void vdp2_vblank_wait(void)
+void Vdp2_VBlankWait(void)
 {
 	while (VDP2_TVSTAT & VDP2_TVSTAT_VBLANK) {}
 	while (!(VDP2_TVSTAT & VDP2_TVSTAT_VBLANK)) {}
 }
 
-void vdp2_bitmap_init(void)
+void Vdp2_BitmapInit(void)
 {
 	int i;
 
 	VDP2_TVMD = 0x0000;         /* display off while configuring */
-	vdp2_vblank_wait();
+	Vdp2_VBlankWait();
 
 	VDP2_RAMCTL = 0x0000;       /* colour RAM mode 0, VRAM banks not partitioned */
 
@@ -71,11 +71,11 @@ void vdp2_bitmap_init(void)
 	for (i = 0; i < VDP2_BITMAP_PITCH * 256 / 2; i += 4) *(volatile uint32_t *)(VDP2_VRAM + VDP2_OVERLAY_OFFSET + i) = 0;
 
 	/* the overlay's colours */
-	vdp2_set_color(256 + VDP2_OVERLAY_LIGHT, RGB555(31, 27, 6));
-	vdp2_set_color(256 + VDP2_OVERLAY_DARK, RGB555(0, 0, 0));
+	Vdp2_SetColor(256 + VDP2_OVERLAY_LIGHT, RGB555(31, 27, 6));
+	Vdp2_SetColor(256 + VDP2_OVERLAY_DARK, RGB555(0, 0, 0));
 }
 
-void vdp2_overlay_pixel(int x, int y, int colour)
+void Vdp2_OverlayPixel(int x, int y, int colour)
 {
 	volatile uint8_t *p;
 
@@ -86,18 +86,18 @@ void vdp2_overlay_pixel(int x, int y, int colour)
 	else *p = (uint8_t)((*p & 0x0F) | ((colour & 0x0F) << 4));
 }
 
-void vdp2_display_on(void)
+void Vdp2_DisplayOn(void)
 {
 	/* DISP on, border shows the back screen, 320x224 non-interlaced */
 	VDP2_TVMD = 0x8000 | 0x0100;
 }
 
-void vdp2_set_color(int index, uint16_t rgb555)
+void Vdp2_SetColor(int index, uint16_t rgb555)
 {
 	((volatile uint16_t *)VDP2_CRAM)[index] = rgb555;
 }
 
-void vdp2_set_scroll_y(int y)
+void Vdp2_SetScrollY(int y)
 {
 	VDP2_SCYIN0 = (uint16_t)y;
 	VDP2_SCYIN1 = (uint16_t)y;

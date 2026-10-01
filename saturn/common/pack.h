@@ -14,10 +14,10 @@
 
 /* Compress size bytes; returns the packed size, or 0 if it would take more
  * than capacity bytes (or the work memory can't be allocated). */
-extern uint32_t pack_compress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t capacity);
+extern uint32_t Pack_Compress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t capacity);
 
 /* Returns the unpacked size, or 0 if the data is broken or would take more
  * than capacity bytes. */
-extern uint32_t pack_decompress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t capacity);
+extern uint32_t Pack_Decompress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t capacity);
 
 #endif /* SATURN_PACK_H */

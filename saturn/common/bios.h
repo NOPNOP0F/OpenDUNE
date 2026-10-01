@@ -28,7 +28,7 @@
 #define SCU_MASK_VBLANK_IN     (1 << 0)
 
 /* Allow all interrupt levels on the calling SH-2. */
-static inline void cpu_interrupts_enable(void)
+static inline void Cpu_EnableInterrupts(void)
 {
 	uint32_t sr;
 	__asm__ volatile ("stc sr, %0" : "=r" (sr));
@@ -37,8 +37,8 @@ static inline void cpu_interrupts_enable(void)
 }
 
 /* Mask all interrupts on the calling SH-2; returns the old SR for
- * cpu_interrupts_restore(). */
-static inline uint32_t cpu_interrupts_disable(void)
+ * Cpu_RestoreInterrupts(). */
+static inline uint32_t Cpu_DisableInterrupts(void)
 {
 	uint32_t sr;
 	__asm__ volatile ("stc sr, %0" : "=r" (sr));
@@ -46,7 +46,7 @@ static inline uint32_t cpu_interrupts_disable(void)
 	return sr;
 }
 
-static inline void cpu_interrupts_restore(uint32_t sr)
+static inline void Cpu_RestoreInterrupts(uint32_t sr)
 {
 	__asm__ volatile ("ldc %0, sr" : : "r" (sr));
 }

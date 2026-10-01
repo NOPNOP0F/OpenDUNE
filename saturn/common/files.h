@@ -15,9 +15,9 @@
 /* Call back for every file in the disc's root directory; stops when the
  * callback returns 0. Returns 0 if the disc can't be read.
  * (int, not bool: the engine includes this and has its own bool.) */
-extern int files_cd_list(int (*callback)(const char *name, uint32_t size, void *data), void *data);
+extern int Files_CdList(int (*callback)(const char *name, uint32_t size, void *data), void *data);
 
 /* write() for file descriptors other than stdout/stderr. */
-extern int files_write(int fd, const void *buffer, size_t length);
+extern int Files_Write(int fd, const void *buffer, size_t length);
 
 #endif /* SATURN_FILES_H */

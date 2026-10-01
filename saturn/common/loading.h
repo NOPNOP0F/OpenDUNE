@@ -9,19 +9,19 @@
 #define SATURN_LOADING_H
 
 /* The game is updating the screen. Call it from the video tick. */
-extern void loading_alive(void);
+extern void Loading_Alive(void);
 
 /* Something changed on screen. Call it when the picture is updated. */
-extern void loading_screen_changed(void);
+extern void Loading_ScreenChanged(void);
 
 /* Allow the indicator (1) or not (0): the cutscenes play their own pictures. */
-extern void loading_enable(int enabled);
+extern void Loading_Enable(int enabled);
 
 /* The CD is being read (1) or not (0). */
-extern void loading_disc(int reading);
+extern void Loading_Disc(int reading);
 
 /* From the VBlank interrupt: shows the indicator when the game has been
  * busy long enough. */
-extern void loading_vblank(void);
+extern void Loading_VBlank(void);
 
 #endif /* SATURN_LOADING_H */

@@ -47,14 +47,14 @@ static Block s_blocks[BLOCK_MAX];
 static int s_blockCount;
 static int s_initialised;
 
-void scsp_init(void)
+void Scsp_Init(void)
 {
 	int slot, i;
 
 	if (s_initialised) return;
 	s_initialised = 1;
 
-	smpc_command(SMPC_CMD_SNDOFF);
+	Smpc_Command(SMPC_CMD_SNDOFF);
 
 	/* 4 Mbit of sound memory, 16-bit DAC, full master volume */
 	SCSP_COMMON = (1 << 9) | 0xF;
@@ -80,7 +80,7 @@ void scsp_init(void)
 	s_blockCount = 1;
 }
 
-int32_t scsp_alloc(uint32_t size)
+int32_t Scsp_Alloc(uint32_t size)
 {
 	int i;
 
@@ -104,7 +104,7 @@ int32_t scsp_alloc(uint32_t size)
 	return -1;
 }
 
-void scsp_free(int32_t offset)
+void Scsp_Free(int32_t offset)
 {
 	int i;
 
@@ -129,7 +129,7 @@ void scsp_free(int32_t offset)
 	}
 }
 
-uint32_t scsp_largest_free(void)
+uint32_t Scsp_LargestFree(void)
 {
 	uint32_t largest = 0;
 	int i;
@@ -139,7 +139,7 @@ uint32_t scsp_largest_free(void)
 	return largest;
 }
 
-void scsp_upload_u8(int32_t offset, const uint8_t *pcm, uint32_t length)
+void Scsp_UploadU8(int32_t offset, const uint8_t *pcm, uint32_t length)
 {
 	volatile uint16_t *dst = SCSP_RAM + offset / 2;
 	uint32_t i;
@@ -151,24 +151,24 @@ void scsp_upload_u8(int32_t offset, const uint8_t *pcm, uint32_t length)
 	if (i < length) *dst = (uint16_t)((pcm[i] ^ 0x80) << 8);
 }
 
-void scsp_upload_s16(int32_t offset, const int16_t *pcm, uint32_t count)
+void Scsp_UploadS16(int32_t offset, const int16_t *pcm, uint32_t count)
 {
 	volatile uint16_t *dst = SCSP_RAM + offset / 2;
 	uint32_t i;
 	for (i = 0; i < count; i++) dst[i] = (uint16_t)pcm[i];
 }
 
-void scsp_slot_write(int slot, int reg, uint16_t value)
+void Scsp_SlotWrite(int slot, int reg, uint16_t value)
 {
 	SCSP_SLOT(slot, reg) = value;
 }
 
-uint16_t scsp_slot_read(int slot, int reg)
+uint16_t Scsp_SlotRead(int slot, int reg)
 {
 	return SCSP_SLOT(slot, reg);
 }
 
-void scsp_key(int slot, int on)
+void Scsp_Key(int slot, int on)
 {
 	uint16_t value = SCSP_SLOT(slot, 0x00) & ~(KEY_ON | KEY_ON_EXECUTE);
 	if (on) value |= KEY_ON;
@@ -176,14 +176,14 @@ void scsp_key(int slot, int on)
 	SCSP_SLOT(slot, 0x00) = value | KEY_ON_EXECUTE;
 }
 
-void scsp_note_on(int slot, const ScspNote *note)
+void Scsp_NoteOn(int slot, const ScspNote *note)
 {
 	/* a slot still sounding (a one-shot looping round its silent tail) is
 	 * only restarted if the SCSP sees the key off first: it looks at the
 	 * keys once a sample (22.7 us), and a key off just before (DSP_Stop())
 	 * may not have been seen yet either */
-	scsp_note_off(slot);
-	saturn_delay_us(30);
+	Scsp_NoteOff(slot);
+	SaturnTimer_DelayUs(30);
 
 	SCSP_SLOT(slot, 0x00) = PCM_8BIT | ((note->loop ? 1 : 0) << 5) | ((note->offset >> 16) & 0xF);
 	SCSP_SLOT(slot, 0x02) = (uint16_t)note->offset;
@@ -202,19 +202,19 @@ void scsp_note_on(int slot, const ScspNote *note)
 	SCSP_SLOT(slot, 0x00) |= KEY_ON_EXECUTE;
 }
 
-void scsp_note_off(int slot)
+void Scsp_NoteOff(int slot)
 {
 	SCSP_SLOT(slot, 0x00) = (SCSP_SLOT(slot, 0x00) & ~(KEY_ON | KEY_ON_EXECUTE)) | KEY_ON_EXECUTE;
 }
 
-void scsp_upload_tail(int32_t offset)
+void Scsp_UploadTail(int32_t offset)
 {
 	volatile uint16_t *dst = SCSP_RAM + offset / 2;
 	int i;
 	for (i = 0; i < SCSP_TAIL / 2; i++) dst[i] = 0;
 }
 
-void scsp_play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_t volume)
+void Scsp_Play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_t volume)
 {
 	/* pitch: rate / 44100 = 2^OCT * (1 + FNS / 1024) */
 	uint32_t f = (rate << 10) / OUTPUT_RATE;
@@ -237,23 +237,23 @@ void scsp_play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_
 	note.decay2 = 0;
 	note.release = 31;
 	note.level = (uint8_t)((255 - volume) >> 1);
-	note.pitch = scsp_pitch(octave, (uint16_t)(f - 1024));
+	note.pitch = Scsp_Pitch(octave, (uint16_t)(f - 1024));
 	note.pan = 0;
-	scsp_note_on(slot, &note);
+	Scsp_NoteOn(slot, &note);
 }
 
-void scsp_stop(int slot)
+void Scsp_Stop(int slot)
 {
-	scsp_note_off(slot);
+	Scsp_NoteOff(slot);
 }
 
 static void (*s_timerHandler)(void);
 
-/* The timer A handler, entered through scsp_timer_entry (irq_entry.S). */
-void scsp_timer_interrupt(void);
-extern void scsp_timer_entry(void);
+/* The timer A handler, entered through Scsp_TimerEntry (irq_entry.S). */
+void Scsp_TimerInterrupt(void);
+extern void Scsp_TimerEntry(void);
 
-void scsp_timer_interrupt(void)
+void Scsp_TimerInterrupt(void)
 {
 	if (!(SCSP_MCIPD & INT_TIMER_A)) return;
 	SCSP_MCIRE = INT_TIMER_A;
@@ -261,12 +261,12 @@ void scsp_timer_interrupt(void)
 	if (s_timerHandler != NULL) s_timerHandler();
 }
 
-void scsp_timer_start(void (*handler)(void))
+void Scsp_TimerStart(void (*handler)(void))
 {
 	s_timerHandler = handler;
 	SCSP_MCIRE = 0x7FF;
 	SCSP_TIMER_A = TIMER_A_VALUE;
 	SCSP_MCIEB = INT_TIMER_A;
-	BIOS_SETUINT(SCU_VECTOR_SOUND, scsp_timer_entry);
+	BIOS_SETUINT(SCU_VECTOR_SOUND, Scsp_TimerEntry);
 	BIOS_CHGSCUIM(~SCU_MASK_SOUND, 0);
 }
