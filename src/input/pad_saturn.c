@@ -595,7 +595,7 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 	released = s_previous & ~pad;
 	s_previous = pad;
 
-	if (controller != CONTROLLER_KEYBOARD && (pad & PAD_RESET) == PAD_RESET) BIOS_EXECDMP();
+	if (controller != CONTROLLER_KEYBOARD && (pad & PAD_RESET) == PAD_RESET) Bios_ExitToMenu();
 
 	/* the on-screen keyboard has the pad while it is on show */
 	if (s_oskOpen && controller != CONTROLLER_KEYBOARD) {

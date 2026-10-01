@@ -163,7 +163,7 @@ void _exit(int status)
 	char text[32];
 	int length;
 
-	if (status == 0) BIOS_EXECDMP();
+	if (status == 0) Bios_ExitToMenu();
 
 	length = sprintf(text, "\nexit(%d)\n", status);
 	Console_Write(text, length);

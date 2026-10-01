@@ -62,4 +62,16 @@ static __inline__ void Cpu_RestoreInterrupts(uint32_t sr)
 	__asm__ volatile ("ldc %0, sr" : : "r" (sr));
 }
 
+/**
+ * Leave the program for the BIOS multiplayer screen, from anywhere: with
+ * every interrupt masked first, as none of the program's handlers (VBlank,
+ * sound timer) may run while the BIOS takes the machine over.
+ */
+static __inline__ void Bios_ExitToMenu(void)
+{
+	Cpu_DisableInterrupts();
+	BIOS_CHGSCUIM(0, 0xBFFF);
+	BIOS_EXECDMP();
+}
+
 #endif /*!< SATURN_BIOS_H */
