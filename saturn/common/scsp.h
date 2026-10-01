@@ -39,7 +39,7 @@ typedef struct ScspNote {
 
 /* OCT/FNS register value for a playback rate of 44100 Hz * 2^(octave) *
  * (1 + fns / 1024); octave -8..7, fns 0..1023. */
-static inline uint16_t Scsp_Pitch(int octave, uint16_t fns)
+static __inline__ uint16_t Scsp_Pitch(int octave, uint16_t fns)
 {
 	return (uint16_t)(((octave & 0xF) << 11) | (fns & 0x3FF));
 }

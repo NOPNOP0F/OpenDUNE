@@ -108,7 +108,9 @@ int _kill(int pid, int signal)
 void _exit(int status)
 {
 	char text[32];
-	int length = snprintf(text, sizeof(text), "\nexit(%d)\n", status);
+	int length;
+
+	length = sprintf(text, "\nexit(%d)\n", status);
 	Console_Write(text, length);
 	Console_Show();
 	for (;;) {}

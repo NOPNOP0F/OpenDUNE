@@ -21,19 +21,23 @@ void Crash_Install(void)
 
 void Crash_Report(uint32_t vector, uint32_t pc, uint32_t sr, uint32_t sp)
 {
-	static const char *const names[] = {
-		[4] = "illegal instruction",
-		[6] = "slot illegal instruction",
-		[9] = "CPU address error",
-		[10] = "DMA address error"
-	};
+	const char *name;
 	char text[160];
 	int length;
 
-	length = snprintf(text, sizeof(text),
+	switch (vector) {
+		case 4: name = "illegal instruction"; break;
+		case 6: name = "slot illegal instruction"; break;
+		case 9: name = "CPU address error"; break;
+		case 10: name = "DMA address error"; break;
+		default: name = "exception"; break;
+	}
+
+	/* fixed-width fields: well within text */
+	length = sprintf(text,
 		"\n*** CRASH: %s\nPC=%08lX SR=%08lX SP=%08lX\n"
 		"sh-elf-addr2line -e opendune.elf %08lX\n",
-		vector < sizeof(names) / sizeof(names[0]) && names[vector] != NULL ? names[vector] : "exception",
+		name,
 		(unsigned long)pc, (unsigned long)sr, (unsigned long)sp, (unsigned long)pc);
 	Console_Write(text, length);
 	Console_Show();

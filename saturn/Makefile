@@ -100,6 +100,9 @@ $(BUILD)/libcdc.a: $(SBL_SRC)/LIB/SEGA_CDC.A
 # (objects also depend on this Makefile, so changed flags rebuild them)
 
 COMMON_HDRS := $(wildcard common/*.h)
+# the runtime keeps to OpenDUNE's C89 (64-bit counts aside: the microsecond
+# clock needs them)
+RUNTIME_CFLAGS := $(CFLAGS) -std=c89 -pedantic -Wno-long-long -Wdeclaration-after-statement
 RUNTIME_OBJS := $(patsubst common/%,$(BUILD)/common/%.o,$(basename $(wildcard common/*.c common/*.S)))
 
 $(BUILD)/common/%.o: common/%.S Makefile
@@ -108,12 +111,12 @@ $(BUILD)/common/%.o: common/%.S Makefile
 
 $(BUILD)/common/%.o: common/%.c $(COMMON_HDRS) Makefile
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(RUNTIME_CFLAGS) -c $< -o $@
 
 # the file layer talks to GFS
 $(BUILD)/common/files.o: common/files.c $(COMMON_HDRS) $(BUILD)/sbl/.copied Makefile
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -D_SH -DMODEL_S -I$(BUILD)/sbl/inc -c $< -o $@
+	$(CC) $(RUNTIME_CFLAGS) -D_SH -DMODEL_S -I$(BUILD)/sbl/inc -c $< -o $@
 
 # --- the AdLib driver (C++) ------------------------------------------------
 
