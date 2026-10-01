@@ -321,12 +321,14 @@ static void GameLoop_LevelEnd(void)
 
 			GUI_SetPaletteAnimated(g_palette2, 15);
 
+#if !defined(SATURN)
 			if (g_campaignID == 1 || g_campaignID == 7) {
 				if (!GUI_Security_Show()) {
 					PrepareEnd();
 					exit(0);
 				}
 			}
+#endif
 		} else {
 			Sound_Output_Feedback(41);
 
