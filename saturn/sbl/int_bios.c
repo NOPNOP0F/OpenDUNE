@@ -7,11 +7,23 @@
 
 #include "sega_int.h"
 
+/**
+ * Set the handler of an SCU interrupt, through the BIOS (SBL's INT library).
+ *
+ * @param n The SCU interrupt vector.
+ * @param handler The handler.
+ */
 void INT_SetScuFunc(int n, interrupt_t handler)
 {
 	SYS_SETUINT(n, handler);
 }
 
+/**
+ * Get the handler of an SCU interrupt, through the BIOS (SBL's INT library).
+ *
+ * @param n The SCU interrupt vector.
+ * @return The handler.
+ */
 interrupt_t INT_GetScuFunc(int n)
 {
 	return (interrupt_t)SYS_GETUINT(n);

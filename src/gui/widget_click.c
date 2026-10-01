@@ -703,7 +703,7 @@ static bool GUI_YesNo(uint16 stringID)
 	return ret;
 }
 #if defined(SATURN)
-char g_saturnWindowStrings[3][52];      /* strings -20 to -22, see GUI_String_Get_ByIndex() */
+char g_saturnWindowStrings[3][52]; /*!< Strings -20 to -22, see GUI_String_Get_ByIndex(). */
 
 static WindowDesc s_backupWindowDesc = {
 	/* index       */ 18,
@@ -717,7 +717,11 @@ static WindowDesc s_backupWindowDesc = {
 	}
 };
 
-/* Draw the window of s_backupWindowDesc, with a line under its title. */
+/**
+ * Draw the window of s_backupWindowDesc, with a line under its title.
+ *
+ * @param line The line.
+ */
 static void GUI_Saturn_BackupWindow(const char *line)
 {
 	Screen oldScreenID;

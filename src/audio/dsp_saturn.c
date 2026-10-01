@@ -20,11 +20,11 @@
 
 enum {
 	VOICE_SLOT = 0,
-	BLIP_SLOT = 31,             /* free: voices use 0, the AdLib music 1-18 */
-	BLIP_SAMPLES = 32,          /* one cycle of a sine */
-	SCRATCH_SIZE = 32 * 1024,   /* g_readBuffer is at most 28000 bytes */
+	BLIP_SLOT = 31,           /*!< free: voices use 0, the AdLib music 1-18 */
+	BLIP_SAMPLES = 32,        /*!< one cycle of a sine */
+	SCRATCH_SIZE = 32 * 1024, /*!< g_readBuffer is at most 28000 bytes */
 	SCRATCH_MAX = SCRATCH_SIZE - SCSP_TAIL,
-	DESCRIPTOR_MAGIC = 0x534E4431   /* "SND1" */
+	DESCRIPTOR_MAGIC = 0x534E4431 /*!< "SND1" */
 };
 
 /* What the engine holds for a voice that lives in sound RAM. */
@@ -37,11 +37,19 @@ typedef struct SaturnVoice {
 
 static bool s_ready = false;
 static int32 s_scratch = -1;
-static uint64_t s_endUs = 0;    /* time (SaturnTimer_Us()) the playing voice ends */
-static int32 s_playing = -1;    /* sound RAM offset of the voice on the slot, playing or done */
-static int32 s_blip = -1;       /* the blip's wave in sound RAM */
+static uint64_t s_endUs = 0; /*!< time (SaturnTimer_Us()) the playing voice ends */
+static int32 s_playing = -1; /*!< sound RAM offset of the voice on the slot, playing or done */
+static int32 s_blip = -1;    /*!< the blip's wave in sound RAM */
 
-/* Find the PCM data of a VOC: first block, type 1, 8-bit unsigned. */
+/**
+ * Find the PCM data of a VOC: first block, type 1, 8-bit unsigned.
+ *
+ * @param data The VOC file.
+ * @param pcm Filled with where the samples start.
+ * @param length Filled with how many there are.
+ * @param rate Filled with their rate in Hz.
+ * @return False if the VOC isn't one we can play.
+ */
 static bool DSP_ParseVoc(const uint8 *data, const uint8 **pcm, uint32 *length, uint32 *rate)
 {
 	const uint8 *block;
@@ -56,6 +64,12 @@ static bool DSP_ParseVoc(const uint8 *data, const uint8 **pcm, uint32 *length, u
 	return true;
 }
 
+/**
+ * Set up the voices: the SCSP and the scratch area in sound RAM for VOCs loaded
+ * when needed.
+ *
+ * @return False if there is no sound RAM for it.
+ */
 bool DSP_Init(void)
 {
 	Scsp_Init();
@@ -74,12 +88,18 @@ bool DSP_Init(void)
 	return s_ready;
 }
 
+/**
+ * Stop the voices.
+ */
 void DSP_Uninit(void)
 {
 	DSP_Stop();
 	s_ready = false;
 }
 
+/**
+ * Stop the voice playing.
+ */
 void DSP_Stop(void)
 {
 	if (!s_ready) return;
@@ -88,6 +108,13 @@ void DSP_Stop(void)
 	s_playing = -1;
 }
 
+/**
+ * Play a voice already in sound RAM, and note when it ends.
+ *
+ * @param offset Where its samples are.
+ * @param samples How many.
+ * @param rate Their rate in Hz.
+ */
 static void DSP_PlayFromSoundRam(int32 offset, uint32 samples, uint32 rate)
 {
 	Scsp_Play(VOICE_SLOT, offset, samples, rate, 255);
@@ -95,6 +122,12 @@ static void DSP_PlayFromSoundRam(int32 offset, uint32 samples, uint32 rate)
 	s_endUs = SaturnTimer_Us() + (uint64_t)samples * 1000000 / rate + 1;
 }
 
+/**
+ * Play a VOC, or a voice kept in sound RAM (a descriptor from
+ * DSP_Saturn_KeepVoc()).
+ *
+ * @param data The VOC or the descriptor.
+ */
 void DSP_Play(const uint8 *data)
 {
 	const SaturnVoice *voice = (const SaturnVoice *)data;
@@ -116,11 +149,21 @@ void DSP_Play(const uint8 *data)
 	DSP_PlayFromSoundRam(s_scratch, length, rate);
 }
 
+/**
+ * Whether a voice is playing, from when it ends.
+ *
+ * @return 2 while one plays, else 0.
+ */
 uint8 DSP_GetStatus(void)
 {
 	return (s_endUs != 0 && SaturnTimer_Us() < s_endUs) ? 2 : 0;
 }
 
+/**
+ * Play one of the pad's blips on its own slot.
+ *
+ * @param blip Which.
+ */
 void DSP_Saturn_Blip(DSPBlip blip)
 {
 	ScspNote note;
@@ -149,6 +192,14 @@ void DSP_Saturn_Blip(DSPBlip blip)
 	Scsp_NoteOn(BLIP_SLOT, &note);
 }
 
+/**
+ * Move a preloaded VOC into sound RAM.
+ *
+ * @param voc The VOC, from malloc(); freed here.
+ * @param size Filled with the size of what to keep instead.
+ * @return A descriptor to keep instead of the VOC, or NULL if it has to be
+ *         loaded when needed.
+ */
 void *DSP_Saturn_KeepVoc(void *voc, uint32 *size)
 {
 	SaturnVoice *voice;
@@ -183,6 +234,11 @@ void *DSP_Saturn_KeepVoc(void *voc, uint32 *size)
 	return voice;
 }
 
+/**
+ * Free a voice kept by DSP_Saturn_KeepVoc() (or a VOC).
+ *
+ * @param data The descriptor.
+ */
 void DSP_Saturn_FreeVoc(void *data)
 {
 	SaturnVoice *voice = data;
@@ -196,12 +252,24 @@ void DSP_Saturn_FreeVoc(void *data)
 	free(voice);
 }
 
+/**
+ * Whether a VOC file of a size can be kept in sound RAM now.
+ *
+ * @param fileSize The size of the VOC file.
+ * @return True if it fits.
+ */
 bool DSP_Saturn_CanKeep(uint32 fileSize)
 {
 	/* the PCM data is shorter than the file */
 	return s_ready && Scsp_LargestFree() >= fileSize + SCSP_TAIL;
 }
 
+/**
+ * Whether a voice kept by DSP_Saturn_KeepVoc() is the one playing.
+ *
+ * @param data The descriptor.
+ * @return True if it plays.
+ */
 bool DSP_Saturn_IsPlaying(const void *data)
 {
 	const SaturnVoice *voice = data;

@@ -22,12 +22,8 @@ extern void GUI_Mentat_SelectHelpSubject(int16 difference);
 extern void GUI_Mentat_Create_HelpScreen_Widgets(void);
 extern bool GUI_Mentat_List_Click(struct Widget *w);
 #if defined(SATURN)
-/* The widget index of the selected help subject; whether it is the first
- * and the last of all. */
 extern uint16 GUI_Mentat_HelpSelection(bool *first, bool *last);
-/* The Mentat has more to say (a key, not a click on a button, carries on). */
 extern bool g_mentatTextPending;
-/* Draw the selected help subject as selected (red), or as the others. */
 extern void GUI_Mentat_ShowHelpSelection(bool show);
 #endif
 extern void GUI_Mentat_ScrollBar_Draw(struct Widget *w);

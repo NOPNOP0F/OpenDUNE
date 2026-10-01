@@ -11,6 +11,9 @@ extern void Crash_Entry6(void);
 extern void Crash_Entry9(void);
 extern void Crash_Entry10(void);
 
+/**
+ * Point the illegal-instruction and address-error vectors at Crash_Report.
+ */
 void Crash_Install(void)
 {
 	BIOS_SETSINT(4, Crash_Entry4);
@@ -19,6 +22,15 @@ void Crash_Install(void)
 	BIOS_SETSINT(10, Crash_Entry10);
 }
 
+/**
+ * Show an SH-2 exception on the console and stop: called by the exception stubs
+ * of crash_entry.S.
+ *
+ * @param vector The exception vector.
+ * @param pc Where it happened.
+ * @param sr The status register then.
+ * @param sp The stack pointer then.
+ */
 void Crash_Report(uint32_t vector, uint32_t pc, uint32_t sr, uint32_t sp)
 {
 	const char *name;

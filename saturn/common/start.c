@@ -9,6 +9,10 @@ extern int main(int argc, char **argv);
 extern void (*s_initArrayStart[])(void) __asm__("__init_array_start");
 extern void (*s_initArrayEnd[])(void) __asm__("__init_array_end");
 
+/**
+ * The C start of the program, from crt0.S: clear BSS, run the static
+ * constructors, then main().
+ */
 void Saturn_Start(void)
 {
 	static char name[] = "opendune";

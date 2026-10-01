@@ -6,19 +6,35 @@
 enum {
 	HASH_BITS = 12,
 	MATCH_MIN = 3,
-	MATCH_SHORT = MATCH_MIN + 0x7E,     /* longest without the extra byte */
+	MATCH_SHORT = MATCH_MIN + 0x7E, /*!< longest without the extra byte */
 	MATCH_MAX = MATCH_MIN + 0x7F + 0xFF,
 	DISTANCE_MAX = 65536,
 	LITERALS_MAX = 128
 };
 
+/**
+ * Hash the three bytes at p, for looking up earlier copies of them.
+ *
+ * @param p The bytes.
+ * @return An index into the hash table.
+ */
 static uint32_t Pack_Hash3(const uint8_t *p)
 {
 	uint32_t v = ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
 	return (v * 2654435761u) >> (32 - HASH_BITS);
 }
 
-/* Write the literal run src[start..end) as tokens. */
+/**
+ * Write the literal run src[start..end) as tokens.
+ *
+ * @param src The data being packed.
+ * @param start The first literal byte.
+ * @param end The byte after the last one.
+ * @param dst The packed output.
+ * @param out The output position, moved on.
+ * @param capacity The size of dst.
+ * @return 0 if dst is full, else 1.
+ */
 static int Pack_PutLiterals(const uint8_t *src, uint32_t start, uint32_t end, uint8_t *dst, uint32_t *out, uint32_t capacity)
 {
 	while (start < end) {
@@ -31,6 +47,16 @@ static int Pack_PutLiterals(const uint8_t *src, uint32_t start, uint32_t end, ui
 	return 1;
 }
 
+/**
+ * Compress size bytes; returns the packed size, or 0 if it would take more
+ * than capacity bytes (or the work memory can't be allocated).
+ *
+ * @param src The data.
+ * @param size Its size in bytes.
+ * @param dst Where to write the packed data.
+ * @param capacity The size of dst.
+ * @return The packed size, or 0.
+ */
 uint32_t Pack_Compress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t capacity)
 {
 	uint32_t *table = malloc(sizeof(uint32_t) << HASH_BITS);
@@ -77,11 +103,22 @@ uint32_t Pack_Compress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t
 		literal = pos;
 	}
 	free(table);
-	if (pos + MATCH_MIN <= size) return 0;     /* ran out of room */
+	/* ran out of room */
+	if (pos + MATCH_MIN <= size) return 0;
 	if (!Pack_PutLiterals(src, literal, size, dst, &out, capacity)) return 0;
 	return out;
 }
 
+/**
+ * Returns the unpacked size, or 0 if the data is broken or would take more
+ * than capacity bytes.
+ *
+ * @param src The packed data.
+ * @param size Its size in bytes.
+ * @param dst Where to unpack it.
+ * @param capacity The size of dst.
+ * @return The unpacked size, or 0.
+ */
 uint32_t Pack_Decompress(const uint8_t *src, uint32_t size, uint8_t *dst, uint32_t capacity)
 {
 	uint32_t in = 0, out = 0;

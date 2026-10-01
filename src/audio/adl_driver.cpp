@@ -2547,34 +2547,49 @@ PCSoundDriver *PCSoundDriver::createAdLib(Audio::Mixer *mixer, int version) {
 
 // ### End of current scummvm code ###
 
-// ### OpenDUNE: C interface (after AdPlug's CadlPlayer) ###
+/* ### OpenDUNE: C interface (after AdPlug's CadlPlayer) ### */
 
-static void ADL_NoOpl(uint8 reg, uint8 val) {
+static void ADL_NoOpl(uint8 reg, uint8 val)
+{
 	(void)reg;
 	(void)val;
 }
 
 static AdLibDriver s_driver(ADL_NoOpl);
-static const uint8 *s_trackEntries = nullptr;	// track -> program (0xFF: none)
+static const uint8 *s_trackEntries = nullptr;           /*!< Track -> program (0xFF: none). */
 static int s_trackCount = 0;
 
-extern "C" void ADL_Init(AdlOplWrite write) {
+/**
+ * Start the driver.
+ *
+ * @param write The function that writes an OPL2 register.
+ */
+extern "C" void ADL_Init(AdlOplWrite write)
+{
 	s_driver = AdLibDriver(write);
 	s_driver.setVersion(3);
 	s_driver.initDriver();
 }
 
-extern "C" int ADL_Load(const uint8 *file, uint32 size) {
-	// Dune II uses version 3: 120 track entries, then the sound data
-	// (250 program offsets, 250 instrument offsets, programs...).
+/**
+ * Use an .ADL file, which must stay in memory while it is used (until the
+ * next ADL_Load()).
+ *
+ * @param file The file's contents.
+ * @param size The file's size.
+ * @return 0 if it can't be used.
+ */
+extern "C" int ADL_Load(const uint8 *file, uint32 size)
+{
+	/* Dune II uses version 3: 120 track entries, then the sound data
+	 * (250 program offsets, 250 instrument offsets, programs...). */
 	s_driver.stopAllChannels();
 	s_driver.setSoundData(nullptr, 0);
 	s_trackEntries = nullptr;
 	s_trackCount = 0;
-	if (file == nullptr || size < 120 + 1000)
-		return 0;
+	if (file == nullptr || size < 120 + 1000) return 0;
 
-	// the driver only reads its sound data
+	/* the driver only reads its sound data */
 	s_driver.setSoundData(const_cast<uint8 *>(file) + 120, size - 120);
 	s_trackEntries = file;
 	for (int i = 120; i > 0; i--) {
@@ -2586,28 +2601,52 @@ extern "C" int ADL_Load(const uint8 *file, uint32 size) {
 	return 1;
 }
 
-extern "C" void ADL_Play(int track, int volume) {
-	if (s_trackEntries == nullptr || track < 0 || track >= s_trackCount)
-		return;
-	if (s_trackEntries[track] == 0xFF)
-		return;
+/**
+ * Start a track (music or sound effect).
+ *
+ * @param track The track.
+ * @param volume The volume, 0..255.
+ */
+extern "C" void ADL_Play(int track, int volume)
+{
+	if (s_trackEntries == nullptr || track < 0 || track >= s_trackCount) return;
+	if (s_trackEntries[track] == 0xFF) return;
 	s_driver.startSound(s_trackEntries[track], volume);
 }
 
-extern "C" void ADL_Callback(void) {
+/**
+ * Run the driver; it must be called 72 times a second.
+ */
+extern "C" void ADL_Callback(void)
+{
 	s_driver.callback();
 }
 
-extern "C" int ADL_IsChannelPlaying(int channel) {
+/**
+ * Check whether a channel is playing.
+ *
+ * @param channel The channel.
+ * @return 1 if it is playing.
+ */
+extern "C" int ADL_IsChannelPlaying(int channel)
+{
 	return s_driver.isChannelPlaying(channel) ? 1 : 0;
 }
 
-extern "C" void ADL_StopAll(void) {
+/**
+ * Stop the music and the sound effects.
+ */
+extern "C" void ADL_StopAll(void)
+{
 	s_driver.stopAllChannels();
 }
 
-extern "C" void ADL_StopMusic(void) {
-	// music plays on channels 0-5, driven from channel 9
+/**
+ * Stop the music (channels 0-5), leaving sound effects (6-8) playing.
+ */
+extern "C" void ADL_StopMusic(void)
+{
+	/* music plays on channels 0-5, driven from channel 9 */
 	s_driver.stopChannels(0, 5);
 	s_driver.stopChannels(9, 9);
 }

@@ -11,7 +11,7 @@
 #define FRT_TCR     REG8(0xFFFFFE16UL)
 
 static volatile uint32_t s_frames;
-static volatile uint16_t s_frameStart;  /* free-running timer at the last VBlank */
+static volatile uint16_t s_frameStart; /*!< free-running timer at the last VBlank */
 static uint32_t s_frameRate = 60;
 static void (*volatile s_vblankHook)(void);
 
@@ -21,6 +21,10 @@ static uint16_t SaturnTimer_FrtRead(void);
 void SaturnTimer_VBlankIn(void);
 extern void SaturnTimer_VBlankInEntry(void);
 
+/**
+ * The VBlank-in interrupt: count the frame and run the hook. Entered through
+ * SaturnTimer_VBlankInEntry (irq_entry.S).
+ */
 void SaturnTimer_VBlankIn(void)
 {
 	s_frameStart = SaturnTimer_FrtRead();
@@ -28,11 +32,19 @@ void SaturnTimer_VBlankIn(void)
 	if (s_vblankHook != NULL) s_vblankHook();
 }
 
+/**
+ * Also run hook in every VBlank-in interrupt (NULL to stop). Keep it short.
+ *
+ * @param hook The function, or NULL.
+ */
 void SaturnTimer_SetVBlankHook(void (*hook)(void))
 {
 	s_vblankHook = hook;
 }
 
+/**
+ * Start counting frames (registers the VBlank-in handler with the BIOS).
+ */
 void SaturnTimer_Init(void)
 {
 	s_frameRate = (VDP2_TVSTAT & VDP2_TVSTAT_PAL) ? 50 : 60;
@@ -46,6 +58,11 @@ void SaturnTimer_Init(void)
 	Cpu_EnableInterrupts();
 }
 
+/**
+ * Read the SH-2's free-running timer.
+ *
+ * @return Its count.
+ */
 static uint16_t SaturnTimer_FrtRead(void)
 {
 	/* Reading the high byte latches the low one in a register shared by
@@ -58,6 +75,11 @@ static uint16_t SaturnTimer_FrtRead(void)
 	return (uint16_t)((high << 8) | low);
 }
 
+/**
+ * Busy-wait at least us microseconds, timed by the SH-2 free-running timer.
+ *
+ * @param us The time to wait.
+ */
 void SaturnTimer_DelayUs(uint32_t us)
 {
 	/* the 16-bit counter wraps after about 18 ms: wait in pieces */
@@ -74,6 +96,12 @@ void SaturnTimer_DelayUs(uint32_t us)
 	}
 }
 
+/**
+ * Microseconds since SaturnTimer_Init(): the frame count plus the time
+ * since the last VBlank, from the free-running timer.
+ *
+ * @return The microseconds; they never go back.
+ */
 uint64_t SaturnTimer_Us(void)
 {
 	static volatile uint64_t last = 0;
@@ -89,7 +117,8 @@ uint64_t SaturnTimer_Us(void)
 		since = (uint16_t)(SaturnTimer_FrtRead() - start);
 	} while (frames != s_frames);
 
-	since = since * 2 / 7;      /* about 3.5 counts per us, as in SaturnTimer_DelayUs() */
+	/* about 3.5 counts per us, as in SaturnTimer_DelayUs() */
+	since = since * 2 / 7;
 	if (since > frameUs) since = frameUs;
 	now = (uint64_t)frames * frameUs + since;
 
@@ -101,11 +130,21 @@ uint64_t SaturnTimer_Us(void)
 	return now;
 }
 
+/**
+ * Frames since SaturnTimer_Init().
+ *
+ * @return The frames.
+ */
 uint32_t SaturnTimer_Frames(void)
 {
 	return s_frames;
 }
 
+/**
+ * Milliseconds since SaturnTimer_Init(), with frame (16-20 ms) resolution.
+ *
+ * @return The milliseconds.
+ */
 uint32_t SaturnTimer_Ms(void)
 {
 	/* 64-bit so the product doesn't wrap after 20 hours */

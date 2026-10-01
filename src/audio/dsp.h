@@ -10,17 +10,16 @@ extern bool DSP_Init(void);
 extern void DSP_Uninit(void);
 
 #if defined(SATURN)
-/* Move a preloaded VOC (malloc'd, freed here) into sound RAM; returns what
- * to keep instead, and its size, or NULL if it has to be loaded when needed. */
+/** The pad's blips: moving the focus, and using what is focused. */
+typedef enum DSPBlip {
+	DSP_BLIP_FOCUS,
+	DSP_BLIP_USE
+} DSPBlip;
+
 extern void *DSP_Saturn_KeepVoc(void *voc, uint32 *size);
 extern void DSP_Saturn_FreeVoc(void *data);
-/* Whether a VOC file of this size can be kept in sound RAM now. */
 extern bool DSP_Saturn_CanKeep(uint32 fileSize);
-/* Short blips for the pad: moving the focus, and using what is focused;
- * they play alongside voices, music and sound effects. */
-typedef enum DSPBlip { DSP_BLIP_FOCUS, DSP_BLIP_USE } DSPBlip;
 extern void DSP_Saturn_Blip(DSPBlip blip);
-/* Whether data (from DSP_Saturn_KeepVoc) is the voice playing. */
 extern bool DSP_Saturn_IsPlaying(const void *data);
 #endif
 

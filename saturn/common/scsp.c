@@ -12,16 +12,16 @@
 #define SCSP_RAM        ((volatile uint16_t *)0x25A00000UL)
 #define SCSP_SLOT(n, r) REG16(0x25B00000UL + (n) * 0x20 + (r))
 #define SCSP_COMMON     REG16(0x25B00400UL)
-#define SCSP_TIMER_A    REG16(0x25B00418UL)     /* TACTL (10-8), TIMA (7-0) */
-#define SCSP_MCIEB      REG16(0x25B0042AUL)     /* main CPU interrupt enable */
-#define SCSP_MCIPD      REG16(0x25B0042CUL)     /* main CPU interrupt pending */
-#define SCSP_MCIRE      REG16(0x25B0042EUL)     /* main CPU interrupt reset */
-#define SCSP_DSP_MPRO   ((volatile uint16_t *)0x25B00800UL)     /* DSP program, 4 words a step */
+#define SCSP_TIMER_A    REG16(0x25B00418UL)                 /*!< TACTL (10-8), TIMA (7-0) */
+#define SCSP_MCIEB      REG16(0x25B0042AUL)                 /*!< main CPU interrupt enable */
+#define SCSP_MCIPD      REG16(0x25B0042CUL)                 /*!< main CPU interrupt pending */
+#define SCSP_MCIRE      REG16(0x25B0042EUL)                 /*!< main CPU interrupt reset */
+#define SCSP_DSP_MPRO   ((volatile uint16_t *)0x25B00800UL) /*!< DSP program, 4 words a step */
 
 enum {
 	SMPC_CMD_SNDOFF = 0x07,
-	INT_TIMER_A = 1 << 6,       /* SCSP interrupt bit (MAME's SCSP has the same) */
-	SCU_VECTOR_SOUND = 0x46,    /* SCU interrupt from the SCSP */
+	INT_TIMER_A = 1 << 6,    /*!< SCSP interrupt bit (MAME's SCSP has the same) */
+	SCU_VECTOR_SOUND = 0x46, /*!< SCU interrupt from the SCSP */
 	SCU_MASK_SOUND = 1 << 6,
 	/* timer A counts at 44.1 kHz and interrupts at 0xFF: 44 counts = 1 ms */
 	TIMER_A_VALUE = (0 << 8) | (255 - 44),
@@ -47,6 +47,10 @@ static Block s_blocks[BLOCK_MAX];
 static int s_blockCount;
 static int s_initialised;
 
+/**
+ * Stop the sound CPU, clear the slots and set the master volume. Only the
+ * first call does anything.
+ */
 void Scsp_Init(void)
 {
 	int slot, i;
@@ -80,11 +84,18 @@ void Scsp_Init(void)
 	s_blockCount = 1;
 }
 
+/**
+ * Sound RAM allocation. Returns an offset into sound RAM, or -1.
+ *
+ * @param size The bytes wanted.
+ * @return The offset, or -1 if there is no room.
+ */
 int32_t Scsp_Alloc(uint32_t size)
 {
 	int i;
 
-	size = (size + 1) & ~1u;    /* keep blocks on 16-bit boundaries */
+	/* keep blocks on 16-bit boundaries */
+	size = (size + 1) & ~1u;
 	for (i = 0; i < s_blockCount; i++) {
 		Block *b = &s_blocks[i];
 		if (b->used || b->size < size) continue;
@@ -104,6 +115,11 @@ int32_t Scsp_Alloc(uint32_t size)
 	return -1;
 }
 
+/**
+ * Give back sound RAM from Scsp_Alloc().
+ *
+ * @param offset The offset it returned.
+ */
 void Scsp_Free(int32_t offset)
 {
 	int i;
@@ -129,6 +145,11 @@ void Scsp_Free(int32_t offset)
 	}
 }
 
+/**
+ * The largest size Scsp_Alloc() can give now.
+ *
+ * @return The size in bytes.
+ */
 uint32_t Scsp_LargestFree(void)
 {
 	uint32_t largest = 0;
@@ -139,6 +160,13 @@ uint32_t Scsp_LargestFree(void)
 	return largest;
 }
 
+/**
+ * Copy unsigned 8-bit PCM to sound RAM as signed 8-bit PCM.
+ *
+ * @param offset Where in sound RAM.
+ * @param pcm The samples.
+ * @param length How many.
+ */
 void Scsp_UploadU8(int32_t offset, const uint8_t *pcm, uint32_t length)
 {
 	volatile uint16_t *dst = SCSP_RAM + offset / 2;
@@ -151,6 +179,13 @@ void Scsp_UploadU8(int32_t offset, const uint8_t *pcm, uint32_t length)
 	if (i < length) *dst = (uint16_t)((pcm[i] ^ 0x80) << 8);
 }
 
+/**
+ * Copy signed 16-bit PCM (count samples) to sound RAM.
+ *
+ * @param offset Where in sound RAM.
+ * @param pcm The samples.
+ * @param count How many.
+ */
 void Scsp_UploadS16(int32_t offset, const int16_t *pcm, uint32_t count)
 {
 	volatile uint16_t *dst = SCSP_RAM + offset / 2;
@@ -158,16 +193,37 @@ void Scsp_UploadS16(int32_t offset, const int16_t *pcm, uint32_t count)
 	for (i = 0; i < count; i++) dst[i] = (uint16_t)pcm[i];
 }
 
+/**
+ * Raw slot register access for drivers that set up slots themselves
+ * (opl_scsp.c); reg is the byte offset 0x00-0x16 within the slot.
+ *
+ * @param slot The slot (0 to 31).
+ * @param reg The register.
+ * @param value The value.
+ */
 void Scsp_SlotWrite(int slot, int reg, uint16_t value)
 {
 	SCSP_SLOT(slot, reg) = value;
 }
 
+/**
+ * Read a slot register (see Scsp_SlotWrite()).
+ *
+ * @param slot The slot (0 to 31).
+ * @param reg The register.
+ * @return Its value.
+ */
 uint16_t Scsp_SlotRead(int slot, int reg)
 {
 	return SCSP_SLOT(slot, reg);
 }
 
+/**
+ * KEY_ON (on = 1) or KEY_OFF a slot, keeping its other settings.
+ *
+ * @param slot The slot.
+ * @param on 1 to key on, 0 to key off.
+ */
 void Scsp_Key(int slot, int on)
 {
 	uint16_t value = SCSP_SLOT(slot, 0x00) & ~(KEY_ON | KEY_ON_EXECUTE);
@@ -176,6 +232,12 @@ void Scsp_Key(int slot, int on)
 	SCSP_SLOT(slot, 0x00) = value | KEY_ON_EXECUTE;
 }
 
+/**
+ * Start a note on a slot, after letting the SCSP see the slot keyed off.
+ *
+ * @param slot The slot.
+ * @param note The note.
+ */
 void Scsp_NoteOn(int slot, const ScspNote *note)
 {
 	/* a slot still sounding (a one-shot looping round its silent tail) is
@@ -190,23 +252,35 @@ void Scsp_NoteOn(int slot, const ScspNote *note)
 	SCSP_SLOT(slot, 0x04) = note->loopStart;
 	SCSP_SLOT(slot, 0x06) = note->end;
 	SCSP_SLOT(slot, 0x08) = (uint16_t)((note->decay2 << 11) | (note->decay1 << 6) | note->attack);
-	SCSP_SLOT(slot, 0x0A) = (uint16_t)((0xF << 10) | (note->decayLevel << 5) | note->release);   /* KRS off */
+	/* KRS off */
+	SCSP_SLOT(slot, 0x0A) = (uint16_t)((0xF << 10) | (note->decayLevel << 5) | note->release);
 	SCSP_SLOT(slot, 0x0C) = note->level;
 	SCSP_SLOT(slot, 0x0E) = 0;
 	SCSP_SLOT(slot, 0x10) = note->pitch;
 	SCSP_SLOT(slot, 0x12) = 0;
 	SCSP_SLOT(slot, 0x14) = 0;
-	SCSP_SLOT(slot, 0x16) = (uint16_t)(0xE000 | ((note->pan & 0x1F) << 8));   /* direct out, full level */
+	/* direct out, full level */
+	SCSP_SLOT(slot, 0x16) = (uint16_t)(0xE000 | ((note->pan & 0x1F) << 8));
 
 	SCSP_SLOT(slot, 0x00) |= KEY_ON;
 	SCSP_SLOT(slot, 0x00) |= KEY_ON_EXECUTE;
 }
 
+/**
+ * Key a slot off (its release follows).
+ *
+ * @param slot The slot.
+ */
 void Scsp_NoteOff(int slot)
 {
 	SCSP_SLOT(slot, 0x00) = (SCSP_SLOT(slot, 0x00) & ~(KEY_ON | KEY_ON_EXECUTE)) | KEY_ON_EXECUTE;
 }
 
+/**
+ * Write SCSP_TAIL samples of 8-bit silence at offset.
+ *
+ * @param offset Where in sound RAM.
+ */
 void Scsp_UploadTail(int32_t offset)
 {
 	volatile uint16_t *dst = SCSP_RAM + offset / 2;
@@ -214,6 +288,19 @@ void Scsp_UploadTail(int32_t offset)
 	for (i = 0; i < SCSP_TAIL / 2; i++) dst[i] = 0;
 }
 
+/**
+ * Play samples (signed 8-bit, at offset in sound RAM, at most 65535 -
+ * SCSP_TAIL of them, followed by Scsp_UploadTail()) once on slot, at rate
+ * Hz; volume 0..255. The slot then loops over the silent tail instead of
+ * stopping: a stopped slot still keyed on would start again at the next
+ * KEY_ON_EXECUTE of any slot.
+ *
+ * @param slot The slot.
+ * @param offset Where the samples are.
+ * @param samples How many.
+ * @param rate The sample rate.
+ * @param volume The volume.
+ */
 void Scsp_Play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_t volume)
 {
 	/* pitch: rate / 44100 = 2^OCT * (1 + FNS / 1024) */
@@ -242,6 +329,11 @@ void Scsp_Play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_
 	Scsp_NoteOn(slot, &note);
 }
 
+/**
+ * Stop what a slot plays.
+ *
+ * @param slot The slot.
+ */
 void Scsp_Stop(int slot)
 {
 	Scsp_NoteOff(slot);
@@ -253,14 +345,24 @@ static void (*s_timerHandler)(void);
 void Scsp_TimerInterrupt(void);
 extern void Scsp_TimerEntry(void);
 
+/**
+ * The SCSP's timer A interrupt: restart the timer and call the handler. Entered
+ * through Scsp_TimerEntry (irq_entry.S).
+ */
 void Scsp_TimerInterrupt(void)
 {
 	if (!(SCSP_MCIPD & INT_TIMER_A)) return;
 	SCSP_MCIRE = INT_TIMER_A;
-	SCSP_TIMER_A = TIMER_A_VALUE;       /* count the next millisecond */
+	/* count the next millisecond */
+	SCSP_TIMER_A = TIMER_A_VALUE;
 	if (s_timerHandler != NULL) s_timerHandler();
 }
 
+/**
+ * Call handler about every millisecond from timer A's interrupt.
+ *
+ * @param handler The function to call.
+ */
 void Scsp_TimerStart(void (*handler)(void))
 {
 	s_timerHandler = handler;

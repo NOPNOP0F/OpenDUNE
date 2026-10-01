@@ -26,7 +26,7 @@
 
 enum {
 	HANDLES = 8,
-	TICK_US = 1000000 / 72,     /* the driver runs 72 times a second */
+	TICK_US = 1000000 / 72, /*!< the driver runs 72 times a second */
 	MUSIC_FIRST = 0,
 	MUSIC_LAST = 5
 };
@@ -39,7 +39,7 @@ typedef struct Handle {
 } Handle;
 
 static Handle s_handles[HANDLES];
-static const uint8 *s_loaded = NULL;    /* the file the driver plays from */
+static const uint8 *s_loaded = NULL; /*!< the file the driver plays from */
 static uint16 s_musicHandle = 0xFFFF;
 static uint64_t s_nextTick = 0;
 
@@ -48,6 +48,12 @@ static int32 s_fadeAtt = 0, s_fadeTarget = 0, s_fadeStep = 0;
 
 static void MPU_Tick(void);
 
+/**
+ * The size of the music or sound file loaded at file, from its name.
+ *
+ * @param file The file in memory.
+ * @return Its size, or 0.
+ */
 static uint32 MPU_FileSize(const uint8 *file)
 {
 	const Driver *drivers[2];
@@ -62,6 +68,11 @@ static uint32 MPU_FileSize(const uint8 *file)
 	return 0;
 }
 
+/**
+ * Set up the AdLib driver on the SCSP and start its timer.
+ *
+ * @return False if there is no sound RAM for the waveforms.
+ */
 bool MPU_Init(void)
 {
 	Scsp_Init();
@@ -73,6 +84,9 @@ bool MPU_Init(void)
 	return true;
 }
 
+/**
+ * Stop the music and sound effects.
+ */
 void MPU_Uninit(void)
 {
 	uint32_t sr = Cpu_DisableInterrupts();
@@ -82,12 +96,25 @@ void MPU_Uninit(void)
 	Cpu_RestoreInterrupts(sr);
 }
 
+/**
+ * The size of the MSData buffers the engine gives MPU_SetData(), not used here.
+ *
+ * @return A small size.
+ */
 uint16 MPU_GetDataSize(void)
 {
 	/* the MSData buffers are not used */
 	return 4;
 }
 
+/**
+ * Make a handle for a track (music or sound effect) of a file.
+ *
+ * @param file The .ADL file.
+ * @param index The track.
+ * @param msdata The MSData buffer (the music's tells music from sound effects).
+ * @return The handle, or 0xFFFF.
+ */
 uint16 MPU_SetData(uint8 *file, uint16 index, void *msdata)
 {
 	uint16 i;
@@ -105,6 +132,11 @@ uint16 MPU_SetData(uint8 *file, uint16 index, void *msdata)
 	return 0xFFFF;
 }
 
+/**
+ * Forget a handle; the file is let go when no handle uses it.
+ *
+ * @param index The handle.
+ */
 void MPU_ClearData(uint16 index)
 {
 	uint16 i;
@@ -125,6 +157,11 @@ void MPU_ClearData(uint16 index)
 	}
 }
 
+/**
+ * Start a handle's track.
+ *
+ * @param index The handle.
+ */
 void MPU_Play(uint16 index)
 {
 	Handle *h;
@@ -152,6 +189,11 @@ void MPU_Play(uint16 index)
 	Cpu_RestoreInterrupts(sr);
 }
 
+/**
+ * Stop a handle's track, if it is the music (sound effects end by themselves).
+ *
+ * @param index The handle.
+ */
 void MPU_Stop(uint16 index)
 {
 	/* sound effects end by themselves, or give way by priority */
@@ -163,6 +205,12 @@ void MPU_Stop(uint16 index)
 	}
 }
 
+/**
+ * Whether a handle's track (the music) is playing.
+ *
+ * @param index The handle.
+ * @return 1 if it is, else 0.
+ */
 uint16 MPU_IsPlaying(uint16 index)
 {
 	int channel;
@@ -180,6 +228,13 @@ uint16 MPU_IsPlaying(uint16 index)
 	return playing;
 }
 
+/**
+ * Fade the music out (volume 0) or set it back.
+ *
+ * @param index The handle.
+ * @param volume The volume, 0 to fade out.
+ * @param time Over how many milliseconds.
+ */
 void MPU_SetVolume(uint16 index, uint16 volume, uint16 time)
 {
 	int32 target, ticks;
@@ -203,7 +258,9 @@ void MPU_SetVolume(uint16 index, uint16 volume, uint16 time)
 	Cpu_RestoreInterrupts(sr);
 }
 
-/* Every millisecond, from the SCSP timer interrupt. */
+/**
+ * Every millisecond, from the SCSP timer interrupt.
+ */
 static void MPU_Tick(void)
 {
 	uint64_t now = SaturnTimer_Us();
@@ -231,16 +288,28 @@ static void MPU_Tick(void)
 	OplScsp_Update();
 }
 
+/**
+ * The engine's music tick: nothing to do, the SCSP's timer interrupt runs
+ * MPU_Tick().
+ */
 void MPU_Interrupt(void)
 {
 	/* the SCSP timer interrupt runs MPU_Tick() */
 }
 
+/**
+ * No thread on the Saturn: the SCSP's timer interrupt drives the music.
+ *
+ * @param usec Not used.
+ */
 void MPU_StartThread(uint32 usec)
 {
 	VARIABLE_NOT_USED(usec);
 }
 
+/**
+ * No thread on the Saturn.
+ */
 void MPU_StopThread(void)
 {
 }

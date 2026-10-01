@@ -19,12 +19,15 @@ static enum { CONSOLE_OFF, CONSOLE_SHOWN, CONSOLE_RELEASED } s_state = CONSOLE_O
 static char s_text[ROWS][COLUMNS];
 static int s_row, s_column;
 
-/* Everything written, the last CONSOLE_LOG_SIZE bytes of it, for reading out
- * of an emulator's memory dump (saturn/tools/ymir-dump.py finds it through
- * the link map). */
-char g_consoleLog[CONSOLE_LOG_SIZE];
-uint32_t g_consoleLogWritten;
+char g_consoleLog[CONSOLE_LOG_SIZE]; /*!< The last CONSOLE_LOG_SIZE bytes written, for reading out of an emulator's memory dump. */
+uint32_t g_consoleLogWritten;        /*!< How many bytes were written in all. */
 
+/**
+ * Draw one character of the console on the bitmap.
+ *
+ * @param row Its row.
+ * @param column Its column.
+ */
 static void Console_DrawChar(int row, int column)
 {
 	const uint8_t *glyph;
@@ -39,6 +42,9 @@ static void Console_DrawChar(int row, int column)
 	}
 }
 
+/**
+ * Draw the whole console on the bitmap.
+ */
 static void Console_DrawAll(void)
 {
 	int row, column;
@@ -47,6 +53,9 @@ static void Console_DrawAll(void)
 	}
 }
 
+/**
+ * Go to the next line, scrolling the console up at the bottom.
+ */
 static void Console_NewLine(void)
 {
 	s_column = 0;
@@ -58,6 +67,12 @@ static void Console_NewLine(void)
 	if (s_state == CONSOLE_SHOWN) Console_DrawAll();
 }
 
+/**
+ * The console's 8x8 glyph of a character: 8 rows, bit 0 the leftmost pixel.
+ *
+ * @param c The character (others than ASCII 32 to 126 show as a space).
+ * @return The glyph.
+ */
 const uint8_t *Console_Glyph(char c)
 {
 	unsigned char u = (unsigned char)c;
@@ -65,6 +80,10 @@ const uint8_t *Console_Glyph(char c)
 	return s_font8x8[u - 32];
 }
 
+/**
+ * Show the console on the screen (fatal errors, crashes), taking the screen
+ * from the game.
+ */
 void Console_Show(void)
 {
 	if (s_state == CONSOLE_OFF) memset(s_text, ' ', sizeof(s_text));
@@ -77,12 +96,22 @@ void Console_Show(void)
 	Vdp2_DisplayOn();
 }
 
+/**
+ * Hand the screen to the game: from now on text is only recorded.
+ */
 void Console_Release(void)
 {
 	if (s_state == CONSOLE_OFF) memset(s_text, ' ', sizeof(s_text));
 	s_state = CONSOLE_RELEASED;
 }
 
+/**
+ * Add text to the console and its log; shows the console on the first write
+ * unless it has been released.
+ *
+ * @param text The text.
+ * @param length Its length in bytes.
+ */
 void Console_Write(const char *text, int length)
 {
 	int i;

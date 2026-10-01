@@ -73,15 +73,15 @@
 #include "vdp2.h"
 
 enum {
-	TAP_FRAMES = 15,            /* a press this short is a tap, not a hold */
-	REPEAT_FIRST = 18,          /* D-pad repeat for the focus, in frames */
+	TAP_FRAMES = 15,   /*!< a press this short is a tap, not a hold */
+	REPEAT_FIRST = 18, /*!< D-pad repeat for the focus, in frames */
 	REPEAT_NEXT = 5,
-	SCROLL_FIRST = 12,          /* and for scrolling the camera */
+	SCROLL_FIRST = 12, /*!< and for scrolling the camera */
 	SCROLL_NEXT = 4,
-	STICK_DEAD = 24,            /* 3D Controller stick dead zone */
-	STICK_STEP = 300,           /* stick travel summed up per tile of scroll */
-	FOCUS_STALE = 5,            /* frames without PadSaturn_HandleEvents() */
-	MISSING_FRAMES = 30,        /* frames with nothing connected before it counts */
+	STICK_DEAD = 24,     /*!< 3D Controller stick dead zone */
+	STICK_STEP = 300,    /*!< stick travel summed up per tile of scroll */
+	FOCUS_STALE = 5,     /*!< frames without PadSaturn_HandleEvents() */
+	MISSING_FRAMES = 30, /*!< frames with nothing connected before it counts */
 	/* the cursor in camera mode: the middle of the centre tile of the map
 	 * view (tile 7, 5 of the 15 x 10 shown from 0, 40) */
 	CAMERA_X = 7 * 16 + 8,
@@ -93,10 +93,10 @@ enum {
 	VIEW_RIGHT = 239,
 	VIEW_TOP = 40,
 	VIEW_BOTTOM = 199,
-	FREE_SPEED = 2,             /* free camera: pixels a frame, */
-	FREE_SPEED_FAST = 6,        /* with C */
-	EDGE_SCROLL_FRAMES = 6,     /* a tile of scroll every so many frames at the edge, */
-	EDGE_SCROLL_FAST = 3,       /* with C */
+	FREE_SPEED = 2,         /*!< free camera: pixels a frame, */
+	FREE_SPEED_FAST = 6,    /*!< with C */
+	EDGE_SCROLL_FRAMES = 6, /*!< a tile of scroll every so many frames at the edge, */
+	EDGE_SCROLL_FAST = 3,   /*!< with C */
 	/* where the cursor waits while the focus is on the Mentat's list: the
 	 * left edge, where the Mentat screen has no widget */
 	LIST_PARK_X = 0,
@@ -148,47 +148,53 @@ static int s_y = SCREEN_HEIGHT / 2;
 static int s_minX = 0, s_maxX = SCREEN_WIDTH - 1;
 static int s_minY = 0, s_maxY = SCREEN_HEIGHT - 1;
 static bool s_positionChanged = true;
-static uint16 s_previous = 0;           /* buttons of the last frame */
+static uint16 s_previous = 0; /*!< buttons of the last frame */
 static bool s_leftButton, s_rightButton;
 static int s_repeatFrames = 0;
-static int s_lTapFrames = -1;           /* frames L has been held, -1: not a tap */
-static int s_cTapFrames = -1;           /* the same for C */
-static bool s_keySpace, s_keyTab;       /* keyboard keys working as A and C */
+static int s_lTapFrames = -1;     /*!< frames L has been held, -1: not a tap */
+static int s_cTapFrames = -1;     /*!< the same for C */
+static bool s_keySpace, s_keyTab; /*!< keyboard keys working as A and C */
 static int s_missingFrames = 0;
-static bool s_controllerMessage = true;     /* pause with a message when none */
+static bool s_controllerMessage = true; /*!< pause with a message when none */
 
 /* requests from Video_Tick for PadSaturn_HandleEvents() and the game loop */
-static volatile uint16 s_navigate = NO_DIRECTION;   /* move the focus */
-static volatile uint16 s_scroll = NO_DIRECTION;     /* scroll the camera */
-static volatile int s_stickX = 0, s_stickY = 0;     /* stick travel summed up */
+static volatile uint16 s_navigate = NO_DIRECTION; /*!< move the focus */
+static volatile uint16 s_scroll = NO_DIRECTION;   /*!< scroll the camera */
+static volatile int s_stickX = 0, s_stickY = 0;   /*!< stick travel summed up */
 static volatile bool s_toggleCamera = false;
-static volatile bool s_stickLast = false;           /* 3D Controller: stick used last */
-static volatile bool s_pressA = false;              /* A pressed (for PadSaturn_PickRegion()) */
-static volatile uint16 s_keyA = 0;                  /* a key A sends instead of a click, or 0 */
-static volatile bool s_blockA = false;              /* ignore A until it is released */
-static volatile bool s_useSound = false;            /* A on the focus makes the use sound */
-static volatile bool s_pressB = false;              /* B pressed (for the Mentat's list) */
-static volatile int s_edgeX = 0, s_edgeY = 0;       /* free camera: pushing against an edge */
-static volatile bool s_edgeFast = false;            /* with C held */
+static volatile bool s_stickLast = false;     /*!< 3D Controller: stick used last */
+static volatile bool s_pressA = false;        /*!< A pressed (for PadSaturn_PickRegion()) */
+static volatile uint16 s_keyA = 0;            /*!< a key A sends instead of a click, or 0 */
+static volatile bool s_blockA = false;        /*!< ignore A until it is released */
+static volatile bool s_useSound = false;      /*!< A on the focus makes the use sound */
+static volatile bool s_pressB = false;        /*!< B pressed (for the Mentat's list) */
+static volatile int s_edgeX = 0, s_edgeY = 0; /*!< free camera: pushing against an edge */
+static volatile bool s_edgeFast = false;      /*!< with C held */
 static enum { CYCLE_NONE, CYCLE_UNIT, CYCLE_STRUCTURE } s_cycle = CYCLE_NONE;
 
 /* what PadSaturn_HandleEvents() found */
-static bool s_camera = false;                       /* camera mode chosen with C */
-static volatile bool s_cameraActive = false;        /* the cursor is the camera's */
-static volatile bool s_focusActive = false;         /* the screen has buttons to focus */
+static bool s_camera = false;                /*!< camera mode chosen with C */
+static volatile bool s_cameraActive = false; /*!< the cursor is the camera's */
+static volatile bool s_focusActive = false;  /*!< the screen has buttons to focus */
 static volatile uint32 s_handledFrame = 0;
 
-static bool s_pointerVisible = true;                /* the mouse pointer is drawn */
-typedef struct Rect { int x, y, w, h; } Rect;       /* w 0: none */
-static Rect s_reticle = { 0, 0, 0, 0 };             /* where the reticle goes */
-static Rect s_reticleDrawn = { 0, 0, 0, 0 };        /* where it is on the overlay */
-static bool s_reticleSnap = false;                  /* follow at once (the free camera) */
+static bool s_pointerVisible = true;          /*!< the mouse pointer is drawn */
+typedef struct Rect { int x, y, w, h; } Rect; /*!< w 0: none */
+static Rect s_reticle = { 0, 0, 0, 0 };       /*!< where the reticle goes */
+static Rect s_reticleDrawn = { 0, 0, 0, 0 };  /*!< where it is on the overlay */
+static bool s_reticleSnap = false;            /*!< follow at once (the free camera) */
 
+/**
+ * Start reading the controllers, in the VBlank interrupt.
+ */
 void PadSaturn_Init(void)
 {
 	SaturnTimer_SetVBlankHook(Smpc_VBlank);
 }
 
+/**
+ * Keep the cursor within its region.
+ */
 static void PadSaturn_Clamp(void)
 {
 	if (s_x < s_minX) s_x = s_minX;
@@ -197,6 +203,14 @@ static void PadSaturn_Clamp(void)
 	if (s_y > s_maxY) s_y = s_maxY;
 }
 
+/**
+ * Move the cursor. If A is held and the cursor goes elsewhere, the button is
+ * let go of where it was first, and A ignored until released: a click only ever
+ * lands where A was pressed.
+ *
+ * @param x Its column.
+ * @param y Its line.
+ */
 void PadSaturn_SetPosition(uint16 x, uint16 y)
 {
 	/* A click only ever where A was pressed: if the cursor goes elsewhere
@@ -214,6 +228,14 @@ void PadSaturn_SetPosition(uint16 x, uint16 y)
 	s_positionChanged = true;
 }
 
+/**
+ * Keep the cursor within a rectangle.
+ *
+ * @param minX The left edge.
+ * @param maxX The right edge.
+ * @param minY The top edge.
+ * @param maxY The bottom edge.
+ */
 void PadSaturn_SetRegion(uint16 minX, uint16 maxX, uint16 minY, uint16 maxY)
 {
 	s_minX = minX;
@@ -224,17 +246,21 @@ void PadSaturn_SetRegion(uint16 minX, uint16 maxX, uint16 minY, uint16 maxY)
 	s_positionChanged = true;
 }
 
-/* The sound of moving the focus: its own, as the game's effects depend on
- * the music loaded (the menus' has none that fits). */
+/**
+ * The sound of moving the focus: its own, as the game's effects depend on
+ * the music loaded (the menus' has none that fits).
+ */
 static void PadSaturn_Blip(void)
 {
 	if (g_gameConfig.sounds != 0) DSP_Saturn_Blip(DSP_BLIP_FOCUS);
 }
 
-static uint32 s_secondNoteFrame = 0;    /* when the use sound's second note is due, or 0 */
+static uint32 s_secondNoteFrame = 0; /*!< when the use sound's second note is due, or 0 */
 
-/* The sound of pressing A on what is focused: a low note, then the focus
- * note (played by PadSaturn_Tick()). */
+/**
+ * The sound of pressing A on what is focused: a low note, then the focus
+ * note (played by PadSaturn_Tick()).
+ */
 static void PadSaturn_UseSound(void)
 {
 	if (g_gameConfig.sounds == 0) return;
@@ -242,23 +268,36 @@ static void PadSaturn_UseSound(void)
 	s_secondNoteFrame = SaturnTimer_Frames() + 4;
 }
 
-/* Queue a Dune II key code as a press and a release: a key still down in
- * the engine's map isn't taken again (when keys don't repeat). */
+/**
+ * Queue a Dune II key code as a press and a release: a key still down in
+ * the engine's map isn't taken again (when keys don't repeat).
+ *
+ * @param key The key code.
+ */
 static void PadSaturn_Key(uint16 key)
 {
 	Input_HandleInput(key);
 	Input_HandleInput(key | 0x800);
 }
 
+/**
+ * Press and release a key, as a PC scan code.
+ *
+ * @param scancode The scan code.
+ */
 static void PadSaturn_KeyTap(uint8 scancode)
 {
 	Input_EventHandler(scancode);
 	Input_EventHandler(scancode | SCANCODE_RELEASED);
 }
 
-/* Queue the shortcut of side bar command button index (8..11), if shown.
+/**
+ * Queue the shortcut of side bar command button index (8..11), if shown.
  * The shortcut is the first letter of the command, so it depends on the
- * language; reading it from the widget keeps it right. */
+ * language; reading it from the widget keeps it right.
+ *
+ * @param index The widget index.
+ */
 static void PadSaturn_CommandButton(uint16 index)
 {
 	Widget *w;
@@ -269,7 +308,9 @@ static void PadSaturn_CommandButton(uint16 index)
 	PadSaturn_Key(w->shortcut);
 }
 
-/* Press the selected structure's Repair/Upgrade button (widget 4), if shown. */
+/**
+ * Press the selected structure's Repair/Upgrade button (widget 4), if shown.
+ */
 static void PadSaturn_RepairUpgrade(void)
 {
 	Widget *w = GUI_Widget_Get_ByIndex(g_widgetLinkedListHead, 4);
@@ -279,7 +320,12 @@ static void PadSaturn_RepairUpgrade(void)
 	PadSaturn_Key(KEY_REPAIR_UPGRADE);
 }
 
-/* Saturn keyboard key number (PS/2 set 2) to PC XT scan code, or 0. */
+/**
+ * Saturn keyboard key number (PS/2 set 2) to PC XT scan code, or 0.
+ *
+ * @param key The key number.
+ * @return The scan code.
+ */
 static uint8 PadSaturn_ScanCode(uint8 key)
 {
 	static const uint8 table[][2] = {
@@ -304,8 +350,14 @@ static uint8 PadSaturn_ScanCode(uint8 key)
 	return 0;
 }
 
-/* Which controller to use, from what is on the two ports; sets which port
- * holds it (the keyboard, for a keyboard and a mouse). */
+/**
+ * Which controller to use, from what is on the two ports; sets which port
+ * holds it (the keyboard, for a keyboard and a mouse).
+ *
+ * @param d The devices of ports 1 and 2.
+ * @param port Filled with the port of the controller.
+ * @return The controller.
+ */
 static Controller PadSaturn_Detect(const SmpcDevice d[2], int *port)
 {
 	int i;
@@ -320,15 +372,20 @@ static Controller PadSaturn_Detect(const SmpcDevice d[2], int *port)
 			case SMPC_PAD: case SMPC_OTHER: return CONTROLLER_PAD;
 			case SMPC_ANALOG: return CONTROLLER_3D;
 			case SMPC_KEYBOARD: return CONTROLLER_KEYBOARD;
-			case SMPC_MOUSE: return CONTROLLER_KEYBOARD_MOUSE;     /* without keys */
+			/* without keys */
+			case SMPC_MOUSE: return CONTROLLER_KEYBOARD_MOUSE;
 			default: break;
 		}
 	}
 	return CONTROLLER_NONE;
 }
 
-/* Keyboard keys go to the game as on DOS, but for the ones standing in for
- * pad buttons when there is no mouse. */
+/**
+ * Keyboard keys go to the game as on DOS, but for the ones standing in for
+ * pad buttons when there is no mouse.
+ *
+ * @param mouse True with a mouse (all keys go to the game).
+ */
 static void PadSaturn_Keys(bool mouse)
 {
 	uint8 key;
@@ -350,7 +407,11 @@ static void PadSaturn_Keys(bool mouse)
 	}
 }
 
-/* The keyboard and mouse: as on DOS. */
+/**
+ * The keyboard and mouse: as on DOS.
+ *
+ * @param d The devices of ports 1 and 2.
+ */
 static void PadSaturn_KeyboardMouse(const SmpcDevice d[2])
 {
 	int dx, dy, i;
@@ -378,8 +439,13 @@ static void PadSaturn_KeyboardMouse(const SmpcDevice d[2])
 	}
 }
 
-/* A D-pad direction as Map_MoveDirection() takes it (0 up, then clockwise
- * in eighths), or NO_DIRECTION. */
+/**
+ * A D-pad direction as Map_MoveDirection() takes it (0 up, then clockwise
+ * in eighths), or NO_DIRECTION.
+ *
+ * @param pad The buttons (PAD_*).
+ * @return The direction.
+ */
 static uint16 PadSaturn_Direction(uint16 pad)
 {
 	static const uint16 directions[16] = {
@@ -391,15 +457,25 @@ static uint16 PadSaturn_Direction(uint16 pad)
 	return directions[bits];
 }
 
-/* Whether the camera's reticle moves freely (Mega Drive) rather than
- * snapping to tiles in the middle of the view: the Game Controls setting. */
+/**
+ * Whether the camera's reticle moves freely (Mega Drive) rather than
+ * snapping to tiles in the middle of the view: the Game Controls setting.
+ *
+ * @return True for the free camera.
+ */
 static bool PadSaturn_FreeCamera(void)
 {
 	return g_gameConfig.camera != 0;
 }
 
-/* Free camera: move the cursor over the map view; pushing on at an edge
- * asks to scroll that way (PadSaturn_Camera() does it). */
+/**
+ * Free camera: move the cursor over the map view; pushing on at an edge
+ * asks to scroll that way (PadSaturn_Camera() does it).
+ *
+ * @param dx The pixels to move right.
+ * @param dy The pixels to move down.
+ * @param fast Whether to scroll fast at an edge.
+ */
 static void PadSaturn_MoveFree(int dx, int dy, bool fast)
 {
 	int x = s_x + dx, y = s_y + dy;
@@ -418,7 +494,12 @@ static void PadSaturn_MoveFree(int dx, int dy, bool fast)
 	}
 }
 
-/* The pad-like controllers: standard pad, 3D Controller, keyboard alone. */
+/**
+ * The pad-like controllers: standard pad, 3D Controller, keyboard alone.
+ *
+ * @param d The controller.
+ * @param controller Its type.
+ */
 static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 {
 	uint16 pad = d->buttons;
@@ -435,8 +516,11 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 	/* a new screen ignores the A that was down when it came (the press
 	 * that skipped the one before) until A is released */
 	if (s_blockA) {
-		if (pad & PAD_A) pad &= ~PAD_A;
-		else s_blockA = false;
+		if (pad & PAD_A) {
+			pad &= ~PAD_A;
+		} else {
+			s_blockA = false;
+		}
 	}
 	pressed = pad & ~s_previous;
 	released = s_previous & ~pad;
@@ -469,8 +553,11 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 			PadSaturn_MoveFree(((pad & PAD_RIGHT) ? speed : 0) - ((pad & PAD_LEFT) ? speed : 0),
 				((pad & PAD_DOWN) ? speed : 0) - ((pad & PAD_UP) ? speed : 0), (pad & PAD_C) != 0);
 		} else if (repeat) {
-			if (s_cameraActive && controller != CONTROLLER_3D) s_scroll = PadSaturn_Direction(pad);
-			else s_navigate = PadSaturn_Direction(pad);
+			if (s_cameraActive && controller != CONTROLLER_3D) {
+				s_scroll = PadSaturn_Direction(pad);
+			} else {
+				s_navigate = PadSaturn_Direction(pad);
+			}
 		}
 	} else if (controller != CONTROLLER_3D) {
 		s_edgeX = s_edgeY = 0;
@@ -531,7 +618,8 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 	if ((released & PAD_L) && s_lTapFrames >= 0) {
 		s_cycle = (pad & PAD_C) ? CYCLE_STRUCTURE : CYCLE_UNIT;
 		s_lTapFrames = -1;
-		s_cTapFrames = -1;      /* C+L isn't a C tap */
+		/* C+L isn't a C tap */
+		s_cTapFrames = -1;
 	}
 
 	if (controller == CONTROLLER_PAD) {
@@ -558,7 +646,16 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 	}
 }
 
-/* Brackets round the corners of a rectangle, with a dark edge outside. */
+/**
+ * Brackets round the corners of a rectangle, with a dark edge outside.
+ *
+ * @param x The rectangle's left edge.
+ * @param y Its top edge.
+ * @param w Its width.
+ * @param h Its height.
+ * @param light The colour of the brackets (VDP2_OVERLAY_*).
+ * @param dark The colour of their edge.
+ */
 static void PadSaturn_Brackets(int x, int y, int w, int h, int light, int dark)
 {
 	int arm = (w < h ? w : h) / 3;
@@ -585,8 +682,15 @@ static void PadSaturn_Brackets(int x, int y, int w, int h, int light, int dark)
 	}
 }
 
-/* Put the reticle round a rectangle (none for a width of 0); it glides
- * there in PadSaturn_ReticleTick(). */
+/**
+ * Put the reticle round a rectangle (none for a width of 0); it glides
+ * there in PadSaturn_ReticleTick().
+ *
+ * @param x The rectangle's left edge.
+ * @param y Its top edge.
+ * @param w Its width, 0 for no reticle.
+ * @param h Its height.
+ */
 static void PadSaturn_SetReticle(int x, int y, int w, int h)
 {
 	s_reticle.x = x;
@@ -595,7 +699,13 @@ static void PadSaturn_SetReticle(int x, int y, int w, int h)
 	s_reticle.h = h;
 }
 
-/* A step of a value towards its target: half the way, at least 1. */
+/**
+ * A step of a value towards its target: half the way, at least 1.
+ *
+ * @param from The value.
+ * @param to The target.
+ * @return The value a step nearer.
+ */
 static int PadSaturn_Step(int from, int to)
 {
 	int d = to - from;
@@ -603,7 +713,9 @@ static int PadSaturn_Step(int from, int to)
 	return from + ((d > 0) ? (d + 1) / 2 : (d - 1) / 2);
 }
 
-/* Once a frame: move the reticle drawn on the overlay towards its place. */
+/**
+ * Once a frame: move the reticle drawn on the overlay towards its place.
+ */
 static void PadSaturn_ReticleTick(void)
 {
 	Rect next;
@@ -612,7 +724,8 @@ static void PadSaturn_ReticleTick(void)
 			s_reticleDrawn.x == s_reticle.x && s_reticleDrawn.y == s_reticle.y) return;
 
 	if (s_reticle.w == 0 || s_reticleDrawn.w == 0 || s_reticleSnap) {
-		next = s_reticle;       /* appears or goes (or follows the free camera) at once */
+		/* appears or goes (or follows the free camera) at once */
+		next = s_reticle;
 	} else {
 		next.x = PadSaturn_Step(s_reticleDrawn.x, s_reticle.x);
 		next.y = PadSaturn_Step(s_reticleDrawn.y, s_reticle.y);
@@ -624,15 +737,21 @@ static void PadSaturn_ReticleTick(void)
 	s_reticleDrawn = next;
 }
 
-/* Draw the mouse pointer or not, redrawing it if it is on show. */
+/**
+ * Draw the mouse pointer or not, redrawing it if it is on show.
+ *
+ * @param visible Whether to draw it.
+ */
 static void PadSaturn_SetPointer(bool visible)
 {
 	if (visible == s_pointerVisible) return;
 	if (g_mouseHiddenDepth != 0) {
-		s_pointerVisible = visible;     /* drawn or not when next shown */
+		/* drawn or not when next shown */
+		s_pointerVisible = visible;
 		return;
 	}
-	if (g_mouseLock != 0) return;       /* the engine is at it: next frame */
+	/* the engine is at it: next frame */
+	if (g_mouseLock != 0) return;
 	g_mouseLock++;
 	GUI_Mouse_Hide();
 	s_pointerVisible = visible;
@@ -640,11 +759,21 @@ static void PadSaturn_SetPointer(bool visible)
 	g_mouseLock--;
 }
 
+/**
+ * Whether to draw the mouse pointer (not where a reticle shows the focus).
+ *
+ * @return True to draw it.
+ */
 bool PadSaturn_PointerVisible(void)
 {
 	return s_pointerVisible;
 }
 
+/**
+ * Once a frame, from Video_Tick(): pick the controller and turn its buttons,
+ * keys and movement into the engine's mouse and key events; move the reticle
+ * and play the second note of the use sound.
+ */
 void PadSaturn_Tick(void)
 {
 	SmpcDevice d[2];
@@ -685,17 +814,34 @@ void PadSaturn_Tick(void)
 	PadSaturn_ReticleTick();
 }
 
+/**
+ * Whether any controller is connected.
+ *
+ * @return True if one is.
+ */
 bool PadSaturn_Connected(void)
 {
 	return s_controller != CONTROLLER_NONE;
 }
 
+/**
+ * Whether to pause with a message while no controller is connected (off
+ * while a window says so itself).
+ *
+ * @param show Whether to.
+ */
 void PadSaturn_ShowControllerMessage(bool show)
 {
 	s_controllerMessage = show;
 }
 
-/* Where a widget is on the screen (as GUI_Widget_HandleEvents() works it out). */
+/**
+ * Where a widget is on the screen (as GUI_Widget_HandleEvents() works it out).
+ *
+ * @param w The widget.
+ * @param x Filled with its left edge.
+ * @param y Filled with its top edge.
+ */
 static void PadSaturn_WidgetPosition(const Widget *w, int *x, int *y)
 {
 	*x = w->offsetX;
@@ -706,8 +852,13 @@ static void PadSaturn_WidgetPosition(const Widget *w, int *x, int *y)
 	*y += g_widgetProperties[w->parentID].yBase;
 }
 
-/* Whether the focus can go to a widget: shown, big enough to be a button,
- * and not the map view, minimap or scroll edges. */
+/**
+ * Whether the focus can go to a widget: shown, big enough to be a button,
+ * and not the map view, minimap or scroll edges.
+ *
+ * @param w The widget.
+ * @return True if it can have the focus.
+ */
 static bool PadSaturn_Focusable(const Widget *w)
 {
 	if (w->flags.invisible || w->width < 8 || w->height < 8) return false;
@@ -718,11 +869,17 @@ static bool PadSaturn_Focusable(const Widget *w)
 	return true;
 }
 
-static Widget *s_focus = NULL;          /* the focused widget */
+static Widget *s_focus = NULL; /*!< the focused widget */
 
-/* Move the focus in a direction, or to the button nearest the cursor for
+/**
+ * Move the focus in a direction, or to the button nearest the cursor for
  * NO_DIRECTION: returns the widget focused then (the same one if there is
- * none that way), or NULL if the screen has nothing to focus. */
+ * none that way), or NULL if the screen has nothing to focus.
+ *
+ * @param list The widgets of the screen.
+ * @param direction The direction (as PadSaturn_Direction()), or NO_DIRECTION.
+ * @return The widget focused, or NULL.
+ */
 static Widget *PadSaturn_MoveFocus(Widget *list, uint16 direction)
 {
 	static const int dirX[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
@@ -765,7 +922,8 @@ static Widget *PadSaturn_MoveFocus(Widget *list, uint16 direction)
 		}
 	}
 	if (!any) return NULL;
-	if (best == NULL) return s_focus;       /* nothing that way */
+	/* nothing that way */
+	if (best == NULL) return s_focus;
 	{
 		int x, y;
 		PadSaturn_WidgetPosition(best, &x, &y);
@@ -774,11 +932,18 @@ static Widget *PadSaturn_MoveFocus(Widget *list, uint16 direction)
 	return best;
 }
 
-/* The Mentat's list of subjects keeps its own selection (drawn red): the
+/**
+ * The Mentat's list of subjects keeps its own selection (drawn red): the
  * focus follows it, up and down move it with the keys the list takes
  * (scrolling at the ends) and skip the section headings (blue, stringID
  * 0x30), down from the last subject goes to Exit, and B clicks Exit.
- * Returns true while the focus is on the list (direction is then used up). */
+ * Returns true while the focus is on the list (direction is then used up).
+ *
+ * @param list The widgets of the screen.
+ * @param fresh Whether the screen is new.
+ * @param direction The D-pad direction, set to NO_DIRECTION once used.
+ * @return True while the focus is on the list.
+ */
 static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 {
 	static uint16 lastMove = 4;
@@ -810,7 +975,8 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 
 	line = GUI_Widget_Get_ByIndex(list, GUI_Mentat_HelpSelection(&first, &last));
 	if (fresh || s_focus == NULL) {
-		s_focus = line;         /* entering: the selected subject */
+		/* entering: the selected subject */
+		s_focus = line;
 		lastMove = 4;
 	}
 
@@ -818,8 +984,11 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 	 * enough travel has been summed up (without the blip) */
 	sr = Cpu_DisableInterrupts();
 	stick = s_stickY;
-	if (stick >= STICK_STEP) s_stickY -= STICK_STEP;
-	else if (stick <= -STICK_STEP) s_stickY += STICK_STEP;
+	if (stick >= STICK_STEP) {
+		s_stickY -= STICK_STEP;
+	} else if (stick <= -STICK_STEP) {
+		s_stickY += STICK_STEP;
+	}
 	s_stickX = 0;
 	Cpu_RestoreInterrupts(sr);
 	s_stickLast = false;
@@ -877,8 +1046,13 @@ static bool PadSaturn_MentatList(Widget *list, bool fresh, uint16 *direction)
 	return true;
 }
 
-/* A number for the buttons of a list, where and how big they are: another
- * number, another screen. */
+/**
+ * A number for the buttons of a list, where and how big they are: another
+ * number, another screen.
+ *
+ * @param list The widgets.
+ * @return The number.
+ */
 static uint32 PadSaturn_Layout(Widget *list)
 {
 	uint32 layout = 0;
@@ -893,7 +1067,13 @@ static uint32 PadSaturn_Layout(Widget *list)
 	return layout;
 }
 
-/* Whether w is a widget of list the focus can go to. */
+/**
+ * Whether w is a widget of list the focus can go to.
+ *
+ * @param list The widgets.
+ * @param w The widget.
+ * @return True if it is there and focusable.
+ */
 static bool PadSaturn_InList(Widget *list, Widget *w)
 {
 	Widget *i;
@@ -905,8 +1085,12 @@ static bool PadSaturn_InList(Widget *list, Widget *w)
 	return false;
 }
 
-/* The 3D Controller's stick, off the camera: scrolls the screen's list, a
- * line each time enough travel has been summed up. */
+/**
+ * The 3D Controller's stick, off the camera: scrolls the screen's list, a
+ * line each time enough travel has been summed up.
+ *
+ * @param list The widgets of the screen.
+ */
 static void PadSaturn_StickScroll(Widget *list)
 {
 	Widget *w;
@@ -934,8 +1118,11 @@ static void PadSaturn_StickScroll(Widget *list)
 
 	for (w = list; w != NULL; w = GUI_Widget_GetNext(w)) {
 		if (w->flags.invisible || w->clickProc != &GUI_Widget_Scrollbar_Click) continue;
-		if (sy < 0) GUI_Widget_Scrollbar_ArrowUp_Click(w);
-		else GUI_Widget_Scrollbar_ArrowDown_Click(w);
+		if (sy < 0) {
+			GUI_Widget_Scrollbar_ArrowUp_Click(w);
+		} else {
+			GUI_Widget_Scrollbar_ArrowDown_Click(w);
+		}
 		break;
 	}
 	sr = Cpu_DisableInterrupts();
@@ -943,7 +1130,9 @@ static void PadSaturn_StickScroll(Widget *list)
 	Cpu_RestoreInterrupts(sr);
 }
 
-/* Put the reticle on the focused widget. */
+/**
+ * Put the reticle on the focused widget.
+ */
 static void PadSaturn_ReticleOnFocus(void)
 {
 	Widget *w = s_focus;
@@ -963,8 +1152,15 @@ static void PadSaturn_ReticleOnFocus(void)
  * can't scroll further. */
 static int s_cameraTileX = 0, s_cameraTileY = 0;
 
-/* Scroll the view by dx, dy tiles within the map (as Map_MoveDirection()
- * does, but from where the view is now); returns the tiles moved. */
+/**
+ * Scroll the view by dx, dy tiles within the map (as Map_MoveDirection()
+ * does, but from where the view is now); returns the tiles moved.
+ *
+ * @param dx The tiles to scroll right.
+ * @param dy The tiles to scroll down.
+ * @param movedX Filled with the tiles scrolled right.
+ * @param movedY Filled with the tiles scrolled down.
+ */
 static void PadSaturn_ScrollView(int dx, int dy, int *movedX, int *movedY)
 {
 	const MapInfo *mapInfo = &g_mapInfos[g_scenario.mapScale];
@@ -980,16 +1176,27 @@ static void PadSaturn_ScrollView(int dx, int dy, int *movedX, int *movedY)
 	*movedY = ny - y;
 }
 
-/* One step of the camera: the cursor back to the middle first, then the
- * view, then (at the map's edge) the cursor towards the edge. */
+/**
+ * One step of the camera: the cursor back to the middle first, then the
+ * view, then (at the map's edge) the cursor towards the edge.
+ *
+ * @param dx The tiles right (-1, 0, 1).
+ * @param dy The tiles down (-1, 0, 1).
+ */
 static void PadSaturn_CameraStep(int dx, int dy)
 {
 	int scrollX = 0, scrollY = 0, movedX, movedY;
 
-	if (dx != 0 && s_cameraTileX != 0 && (s_cameraTileX > 0) != (dx > 0)) s_cameraTileX += dx;
-	else scrollX = dx;
-	if (dy != 0 && s_cameraTileY != 0 && (s_cameraTileY > 0) != (dy > 0)) s_cameraTileY += dy;
-	else scrollY = dy;
+	if (dx != 0 && s_cameraTileX != 0 && (s_cameraTileX > 0) != (dx > 0)) {
+		s_cameraTileX += dx;
+	} else {
+		scrollX = dx;
+	}
+	if (dy != 0 && s_cameraTileY != 0 && (s_cameraTileY > 0) != (dy > 0)) {
+		s_cameraTileY += dy;
+	} else {
+		scrollY = dy;
+	}
 
 	PadSaturn_ScrollView(scrollX, scrollY, &movedX, &movedY);
 	if (scrollX != 0 && movedX == 0) s_cameraTileX += scrollX;
@@ -1002,8 +1209,10 @@ static void PadSaturn_CameraStep(int dx, int dy)
 	if (s_cameraTileY > 4) s_cameraTileY = 4;
 }
 
-/* The free camera: the reticle on the cursor, the view scrolling while it
- * is pushed against an edge. */
+/**
+ * The free camera: the reticle on the cursor, the view scrolling while it
+ * is pushed against an edge.
+ */
 static void PadSaturn_FreeCameraTick(void)
 {
 	static uint32 lastScroll = 0;
@@ -1011,7 +1220,8 @@ static void PadSaturn_FreeCameraTick(void)
 	int movedX, movedY;
 
 	if (s_x < VIEW_LEFT || s_x > VIEW_RIGHT || s_y < VIEW_TOP || s_y > VIEW_BOTTOM) {
-		PadSaturn_SetPosition(CAMERA_X, CAMERA_Y);      /* coming from the side bar */
+		/* coming from the side bar */
+		PadSaturn_SetPosition(CAMERA_X, CAMERA_Y);
 	}
 	if ((s_edgeX != 0 || s_edgeY != 0) && frames - lastScroll >= (uint32)(s_edgeFast ? EDGE_SCROLL_FAST : EDGE_SCROLL_FRAMES)) {
 		PadSaturn_ScrollView(s_edgeX, s_edgeY, &movedX, &movedY);
@@ -1021,7 +1231,9 @@ static void PadSaturn_FreeCameraTick(void)
 	PadSaturn_SetReticle(s_x - 8, s_y - 8, 16, 16);
 }
 
-/* Scroll the camera from the D-pad or the stick. */
+/**
+ * Scroll the camera from the D-pad or the stick.
+ */
 static void PadSaturn_Camera(void)
 {
 	static const int directionX[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
@@ -1063,10 +1275,13 @@ static void PadSaturn_Camera(void)
 }
 
 /* A new screen: forget what was pressed for the one before. */
-/* The focus jumps by itself (not with the D-pad): let go of the button
+
+/**
+ * The focus jumps by itself (not with the D-pad): let go of the button
  * where the cursor is now, and ignore A until it is released, or the
  * release would click where the focus lands (placing a structure ends on
- * the Options button, a command button hands over to the camera). */
+ * the Options button, a command button hands over to the camera).
+ */
 static void PadSaturn_ReleaseA(void)
 {
 	if (s_previous & PAD_A) {
@@ -1076,6 +1291,9 @@ static void PadSaturn_ReleaseA(void)
 	}
 }
 
+/**
+ * A new screen: let go of A and forget what was pressed for the one before.
+ */
 static void PadSaturn_NewScreen(void)
 {
 	/* let go before forgetting: a release coming later would finish a
@@ -1086,7 +1304,9 @@ static void PadSaturn_NewScreen(void)
 	s_pressA = false;
 }
 
-/* Pause, with a message, until a controller is connected. */
+/**
+ * Pause, with a message, until a controller is connected.
+ */
 static void PadSaturn_WaitForController(void)
 {
 	static bool waiting = false;
@@ -1099,10 +1319,17 @@ static void PadSaturn_WaitForController(void)
 	GUI_DisplayModalMessage("No controller is connected.\rPlease connect one to controller port 1 or 2.", 0xFFFF);
 	g_modalMessageUntil = NULL;
 	Timer_SetTimer(TIMER_GAME, gameTimer);
-	s_previous = 0xFFFF;        /* no press from what was held when connecting */
+	/* no press from what was held when connecting */
+	s_previous = 0xFFFF;
 	waiting = false;
 }
 
+/**
+ * Move the focus or the camera; GUI_Widget_HandleEvents() calls it with the
+ * widgets of the screen on show.
+ *
+ * @param list The widgets of the screen, or NULL.
+ */
 void PadSaturn_HandleEvents(Widget *list)
 {
 	static Widget *lastList = NULL;
@@ -1167,8 +1394,11 @@ void PadSaturn_HandleEvents(Widget *list)
 
 	/* a new screen, or the focused widget gone: the nearest one */
 	if (fresh || !PadSaturn_InList(list, s_focus)) {
-		if (fresh) PadSaturn_NewScreen();
-		else PadSaturn_ReleaseA();
+		if (fresh) {
+			PadSaturn_NewScreen();
+		} else {
+			PadSaturn_ReleaseA();
+		}
 		s_focus = PadSaturn_MoveFocus(list, NO_DIRECTION);
 		lastList = list;
 	}
@@ -1194,6 +1424,17 @@ void PadSaturn_HandleEvents(Widget *list)
 	PadSaturn_ReticleOnFocus();
 }
 
+/**
+ * The same for the text menus of GameLoop_HandleEvents() (main menu): the
+ * focus moves between the lines, from left, top to right, of lineHeight.
+ *
+ * @param left The left edge of the lines.
+ * @param top The top of the first line.
+ * @param right The right edge of the lines.
+ * @param lineHeight The height of a line.
+ * @param lines How many lines.
+ * @param current The menu's own choice.
+ */
 void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeight, uint16 lines, uint16 current)
 {
 	static uint16 lastTop = 0xFFFF;
@@ -1217,7 +1458,8 @@ void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeig
 	Cpu_RestoreInterrupts(sr);
 	s_focusActive = true;
 	s_cameraActive = false;
-	PadSaturn_SetReticle(0, 0, 0, 0);       /* the focused line changes colour */
+	/* the focused line changes colour */
+	PadSaturn_SetReticle(0, 0, 0, 0);
 
 	/* the line the cursor is on, or the menu's own choice when it's elsewhere */
 	if (top != lastTop || s_x < left || s_x > right || s_y < top || s_y >= top + lines * lineHeight) {
@@ -1236,6 +1478,16 @@ void PadSaturn_HandleMenu(uint16 left, uint16 top, uint16 right, uint16 lineHeig
 	}
 }
 
+/**
+ * The campaign map: move the focus between the regions to choose, at x, y
+ * (16 x 16 each, usable or not); returns the one picked with A, or -1.
+ *
+ * @param x The regions' left edges.
+ * @param y Their top edges.
+ * @param usable Whether each can be chosen.
+ * @param count How many there are.
+ * @return The region picked, or -1.
+ */
 int PadSaturn_PickRegion(const int16 *x, const int16 *y, const bool *usable, int count)
 {
 	static const int dirX[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
@@ -1248,7 +1500,8 @@ int PadSaturn_PickRegion(const int16 *x, const int16 *y, const bool *usable, int
 
 	if (s_controller == CONTROLLER_NONE) PadSaturn_WaitForController();
 	if (SaturnTimer_Frames() - s_handledFrame > FOCUS_STALE) {
-		focus = -1;     /* a new map */
+		/* a new map */
+		focus = -1;
 		PadSaturn_NewScreen();
 	}
 	s_handledFrame = SaturnTimer_Frames();
@@ -1272,7 +1525,8 @@ int PadSaturn_PickRegion(const int16 *x, const int16 *y, const bool *usable, int
 			focus = -1;
 			return -1;
 		}
-		pressA = false;         /* the press that opened the map */
+		/* the press that opened the map */
+		pressA = false;
 	}
 
 	if (direction != NO_DIRECTION) {
@@ -1302,7 +1556,13 @@ int PadSaturn_PickRegion(const int16 *x, const int16 *y, const bool *usable, int
 	return pressA ? focus : -1;
 }
 
-/* The next of the player's objects after index (wrapping round), or NULL. */
+/**
+ * The next of the player's objects after index (wrapping round), or NULL.
+ *
+ * @param structures True for structures, false for units.
+ * @param index The pool index to go on from, or 0xFFFF for the first.
+ * @return The object, or NULL.
+ */
 static Object *PadSaturn_NextObject(bool structures, uint16 index)
 {
 	PoolFindStruct find;
@@ -1332,6 +1592,10 @@ static Object *PadSaturn_NextObject(bool structures, uint16 index)
 	return first;
 }
 
+/**
+ * Carry out what the pad asked for that has to run in the game loop
+ * (cycling through units and structures).
+ */
 void PadSaturn_GameLoop(void)
 {
 	bool structures = (s_cycle == CYCLE_STRUCTURE);

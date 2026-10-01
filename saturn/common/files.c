@@ -25,7 +25,7 @@
 extern int errno;
 
 enum {
-	FD_FIRST = 3,           /* 0-2 are stdin/stdout/stderr */
+	FD_FIRST = 3, /*!< 0-2 are stdin/stdout/stderr */
 	FD_COUNT = 16,
 	OPEN_FILES_MAX = 8,
 	DIR_MAX = 128,
@@ -37,14 +37,15 @@ enum {
 };
 
 typedef struct RamFile {
-	char name[NAME_MAX_LENGTH + 1];     /* empty: slot unused */
+	/* empty: slot unused */
+	char name[NAME_MAX_LENGTH + 1];
 	uint8_t *data;
 	uint32_t size;
 	uint32_t capacity;
-	int opens;          /* file descriptors on it */
-	bool changed;       /* since it was read from backup memory */
-	bool stored;        /* in backup memory as it is */
-	bool deleted;       /* unlinked while open: gone once closed */
+	int opens;    /*!< file descriptors on it */
+	bool changed; /*!< since it was read from backup memory */
+	bool stored;  /*!< in backup memory as it is */
+	bool deleted; /*!< unlinked while open: gone once closed */
 } RamFile;
 
 typedef enum { FD_FREE, FD_CD, FD_RAM } FdKind;
@@ -74,8 +75,8 @@ static int32_t s_dirCount;
  * don't change, and the game reopens a file (a PAK) for each read. */
 static uint8_t *s_cache;
 static int32_t s_cacheFid = -1;
-static uint32_t s_cacheFirst;       /* first sector held */
-static uint32_t s_cacheCount;       /* sectors held */
+static uint32_t s_cacheFirst; /*!< first sector held */
+static uint32_t s_cacheCount; /*!< sectors held */
 
 /* Sectors read before, kept in VDP1's 512 KB of VRAM, which nothing else
  * uses (the picture is VDP2's): reading them again (tiles, scripts, the
@@ -87,27 +88,44 @@ enum { VRAM_SLOTS = 255 };
 #define VDP1_PTMR   (*(volatile uint16_t *)0x25D00004UL)
 
 typedef struct VramSlot {
-	int32_t fid;            /* -1: free */
+	int32_t fid; /*!< -1: free */
 	uint32_t sector;
-	uint32_t used;          /* when last used, for replacing the oldest */
+	uint32_t used; /*!< when last used, for replacing the oldest */
 } VramSlot;
 
 static VramSlot s_vram[VRAM_SLOTS];
 static uint32_t s_vramClock = 0;
 
+/**
+ * Where a cache slot is in VDP1's VRAM.
+ *
+ * @param i The slot.
+ * @return Its address.
+ */
 static volatile uint32_t *Files_VramSlot(int i)
 {
 	return (volatile uint32_t *)(VDP1_VRAM + (uint32_t)(i + 1) * SECTOR_SIZE);
 }
 
+/**
+ * Empty the cache and keep VDP1 from drawing.
+ */
 static void Files_VramInit(void)
 {
 	int i;
-	VDP1_PTMR = 0;                                  /* no drawing */
+	/* no drawing */
+	VDP1_PTMR = 0;
 	*(volatile uint16_t *)VDP1_VRAM = 0x8000;       /* end of command list */
 	for (i = 0; i < VRAM_SLOTS; i++) s_vram[i].fid = -1;
 }
 
+/**
+ * Look a sector up in the cache.
+ *
+ * @param fid The file.
+ * @param sector The sector in the file.
+ * @return The cache slot, or -1.
+ */
 static int Files_VramFind(int32_t fid, uint32_t sector)
 {
 	int i;
@@ -120,6 +138,13 @@ static int Files_VramFind(int32_t fid, uint32_t sector)
 	return -1;
 }
 
+/**
+ * Keep a sector in the cache, in place of the one used longest ago.
+ *
+ * @param fid The file.
+ * @param sector The sector in the file.
+ * @param data Its 2048 bytes.
+ */
 static void Files_VramStore(int32_t fid, uint32_t sector, const uint8_t *data)
 {
 	volatile uint32_t *dst;
@@ -141,6 +166,12 @@ static void Files_VramStore(int32_t fid, uint32_t sector, const uint8_t *data)
 	s_vram[oldest].used = ++s_vramClock;
 }
 
+/**
+ * Copy a sector out of the cache.
+ *
+ * @param slot The cache slot.
+ * @param data Where to copy its 2048 bytes.
+ */
 static void Files_VramLoad(int slot, uint8_t *data)
 {
 	volatile uint32_t *src = Files_VramSlot(slot);
@@ -149,6 +180,11 @@ static void Files_VramLoad(int slot, uint8_t *data)
 	for (i = 0; i < SECTOR_SIZE / 4; i++) dst[i] = src[i];
 }
 
+/**
+ * Set up the disc's file system (GFS) and the caches, the first time.
+ *
+ * @return False if the disc can't be read.
+ */
 static bool Files_CdInit(void)
 {
 	if (s_cdReady) return true;
@@ -167,24 +203,49 @@ static bool Files_CdInit(void)
 	return true;
 }
 
-/* Last component of a path. */
+/**
+ * Last component of a path.
+ *
+ * @param path The path.
+ * @return The part after the last '/'.
+ */
 static const char *Files_BaseName(const char *path)
 {
 	const char *slash = strrchr(path, '/');
 	return (slash != NULL) ? slash + 1 : path;
 }
 
+/**
+ * Whether a path names a file on the disc ("CD/...").
+ *
+ * @param path The path.
+ * @return True for the disc.
+ */
 static bool Files_IsCdPath(const char *path)
 {
 	return strncmp(path, FILES_CD_PREFIX, sizeof(FILES_CD_PREFIX) - 1) == 0;
 }
 
+/**
+ * Whether a path names one of the two directories: the disc's and the personal
+ * files'.
+ *
+ * @param path The path.
+ * @return True for a directory.
+ */
 static bool Files_IsDirectory(const char *path)
 {
 	return strcmp(path, ".") == 0 || strcmp(path, "./") == 0 ||
 	       strcmp(path, "CD") == 0 || strcmp(path, FILES_CD_PREFIX) == 0;
 }
 
+/**
+ * Copy a name in capitals, as the disc and the RAM store keep them.
+ *
+ * @param dst Where to copy it.
+ * @param src The name.
+ * @param size The size of dst.
+ */
 static void Files_UpperName(char *dst, const char *src, size_t size)
 {
 	size_t i;
@@ -195,6 +256,12 @@ static void Files_UpperName(char *dst, const char *src, size_t size)
 	dst[i] = '\0';
 }
 
+/**
+ * Find a file on the disc.
+ *
+ * @param path Its path ("CD/NAME").
+ * @return Its GFS file ID, or a negative value.
+ */
 static int32_t Files_CdFind(const char *path)
 {
 	char name[GFS_FNAME_LEN + 1];
@@ -203,11 +270,23 @@ static int32_t Files_CdFind(const char *path)
 	return GFS_NameToId((Sint8 *)name);
 }
 
+/**
+ * The size of a file on the disc.
+ *
+ * @param fid Its GFS file ID.
+ * @return The size in bytes.
+ */
 static uint32_t Files_CdSize(int32_t fid)
 {
 	return (uint32_t)GFS_DIR_SIZE(&s_dirNames[fid]);
 }
 
+/**
+ * Find a personal file in RAM.
+ *
+ * @param path Its path.
+ * @return The file, or NULL.
+ */
 static RamFile *Files_RamFind(const char *path)
 {
 	char name[NAME_MAX_LENGTH + 1];
@@ -219,6 +298,12 @@ static RamFile *Files_RamFind(const char *path)
 	return NULL;
 }
 
+/**
+ * Make an empty personal file in RAM.
+ *
+ * @param path Its path.
+ * @return The file, or NULL if all the places are used.
+ */
 static RamFile *Files_RamCreate(const char *path)
 {
 	int i;
@@ -233,14 +318,24 @@ static RamFile *Files_RamCreate(const char *path)
 	return NULL;
 }
 
+/**
+ * Forget a personal file in RAM, with its data.
+ *
+ * @param r The file.
+ */
 static void Files_RamFree(RamFile *r)
 {
 	free(r->data);
 	memset(r, 0, sizeof(*r));
 }
 
-/* Name in backup memory: "D2_" and up to 8 letters and digits of the file
- * name, before the extension ("_save000.dat" -> "D2_SAVE000"). */
+/**
+ * Name in backup memory: "D2_" and up to 8 letters and digits of the file
+ * name, before the extension ("_save000.dat" -> "D2_SAVE000").
+ *
+ * @param path The file's path.
+ * @param name Filled with the name.
+ */
 static void Files_BackupName(const char *path, char name[BACKUP_NAME_LENGTH + 1])
 {
 	const char *src = Files_BaseName(path);
@@ -255,7 +350,12 @@ static void Files_BackupName(const char *path, char name[BACKUP_NAME_LENGTH + 1]
 	name[length] = '\0';
 }
 
-/* Read a personal file in from backup memory, if it is there. */
+/**
+ * Read a personal file in from backup memory, if it is there.
+ *
+ * @param path The file's path.
+ * @return The file in RAM, or NULL.
+ */
 static RamFile *Files_RamLoad(const char *path)
 {
 	char name[BACKUP_NAME_LENGTH + 1];
@@ -276,7 +376,12 @@ static RamFile *Files_RamLoad(const char *path)
 	return r;
 }
 
-/* Write a changed personal file to backup memory. */
+/**
+ * Write a changed personal file to backup memory.
+ *
+ * @param r The file.
+ * @return False if it doesn't fit.
+ */
 static bool Files_RamStore(RamFile *r)
 {
 	char name[BACKUP_NAME_LENGTH + 1];
@@ -288,6 +393,12 @@ static bool Files_RamStore(RamFile *r)
 	return true;
 }
 
+/**
+ * The open file of a file descriptor.
+ *
+ * @param fd The file descriptor.
+ * @return The file, or NULL if fd isn't open.
+ */
 static Fd *Files_FdGet(int fd)
 {
 	if (fd < FD_FIRST || fd >= FD_FIRST + FD_COUNT) return NULL;
@@ -295,6 +406,11 @@ static Fd *Files_FdGet(int fd)
 	return &s_fds[fd - FD_FIRST];
 }
 
+/**
+ * Find an unused file descriptor.
+ *
+ * @return It, or -1 if all are used.
+ */
 static int Files_FdAlloc(void)
 {
 	int i;
@@ -304,6 +420,15 @@ static int Files_FdAlloc(void)
 	return -1;
 }
 
+/**
+ * Call back for every file in the disc's root directory; stops when the
+ * callback returns 0. Returns 0 if the disc can't be read.
+ * (int, not bool: the engine includes this and has its own bool.)
+ *
+ * @param callback Called with each file's name and size, and data.
+ * @param data For the callback.
+ * @return 1, or 0 if the disc can't be read.
+ */
 int Files_CdList(int (*callback)(const char *name, uint32_t size, void *data), void *data)
 {
 	int32_t i;
@@ -324,6 +449,14 @@ int Files_CdList(int (*callback)(const char *name, uint32_t size, void *data), v
 	return 1;
 }
 
+/**
+ * open() for newlib: a file on the disc (read only) or a personal file.
+ *
+ * @param path The path.
+ * @param flags O_* flags.
+ * @param mode Not used.
+ * @return The file descriptor, or -1 (errno set).
+ */
 int _open(const char *path, int flags, int mode)
 {
 	int fd = Files_FdAlloc();
@@ -370,7 +503,8 @@ int _open(const char *path, int flags, int mode)
 			errno = ENOSPC;
 			return -1;
 		}
-		f->ram->changed = true;     /* even if nothing is written: it exists */
+		/* even if nothing is written: it exists */
+		f->ram->changed = true;
 	}
 	if (flags & O_TRUNC) {
 		f->ram->size = 0;
@@ -381,6 +515,12 @@ int _open(const char *path, int flags, int mode)
 	return fd;
 }
 
+/**
+ * close() for newlib; a changed personal file is written to backup memory.
+ *
+ * @param fd The file descriptor.
+ * @return 0, or -1 if it couldn't be written (errno ENOSPC).
+ */
 int _close(int fd)
 {
 	Fd *f = Files_FdGet(fd);
@@ -410,6 +550,15 @@ int _close(int fd)
 	return 0;
 }
 
+/**
+ * Read from a file on the disc: through the cache of the last sectors read,
+ * then VDP1's VRAM, then the CD.
+ *
+ * @param f The open file.
+ * @param buffer Where to read to.
+ * @param length The bytes wanted.
+ * @return The bytes read, or -1 (errno set).
+ */
 static int Files_CdRead(Fd *f, uint8_t *buffer, uint32_t length)
 {
 	uint32_t done = 0;
@@ -467,6 +616,14 @@ static int Files_CdRead(Fd *f, uint8_t *buffer, uint32_t length)
 	return (int)done;
 }
 
+/**
+ * read() for newlib.
+ *
+ * @param fd The file descriptor.
+ * @param buffer Where to read to.
+ * @param length The bytes wanted.
+ * @return The bytes read, 0 at the end, or -1 (errno set).
+ */
 int _read(int fd, void *buffer, size_t length)
 {
 	Fd *f = Files_FdGet(fd);
@@ -486,6 +643,14 @@ int _read(int fd, void *buffer, size_t length)
 	return (int)count;
 }
 
+/**
+ * write() for file descriptors other than stdout/stderr.
+ *
+ * @param fd The file descriptor.
+ * @param buffer The data.
+ * @param length Its size.
+ * @return The bytes written, or -1 (errno set).
+ */
 int Files_Write(int fd, const void *buffer, size_t length)
 {
 	Fd *f = Files_FdGet(fd);
@@ -519,6 +684,14 @@ int Files_Write(int fd, const void *buffer, size_t length)
 	return (int)length;
 }
 
+/**
+ * lseek() for newlib.
+ *
+ * @param fd The file descriptor.
+ * @param offset The offset.
+ * @param whence SEEK_SET, SEEK_CUR or SEEK_END.
+ * @return The new position, or -1 (errno set).
+ */
 off_t _lseek(int fd, off_t offset, int whence)
 {
 	Fd *f = Files_FdGet(fd);
@@ -542,6 +715,13 @@ off_t _lseek(int fd, off_t offset, int whence)
 	return (off_t)f->position;
 }
 
+/**
+ * fstat() for newlib: the type and the size.
+ *
+ * @param fd The file descriptor.
+ * @param st Filled in.
+ * @return 0, or -1 (errno set).
+ */
 int _fstat(int fd, struct stat *st)
 {
 	Fd *f;
@@ -562,6 +742,13 @@ int _fstat(int fd, struct stat *st)
 	return 0;
 }
 
+/**
+ * stat() for newlib: the type and the size.
+ *
+ * @param path The path.
+ * @param st Filled in.
+ * @return 0, or -1 (errno set).
+ */
 int _stat(const char *path, struct stat *st)
 {
 	memset(st, 0, sizeof(*st));
@@ -597,6 +784,13 @@ int _stat(const char *path, struct stat *st)
 	}
 }
 
+/**
+ * unlink() for newlib: deletes a personal file, from backup memory too (open
+ * ones go when closed).
+ *
+ * @param path The path.
+ * @return 0, or -1 (errno set).
+ */
 int _unlink(const char *path)
 {
 	RamFile *r;
@@ -608,8 +802,11 @@ int _unlink(const char *path)
 	r = Files_RamFind(path);
 	if (r != NULL) {
 		/* descriptors still open keep it until they are closed */
-		if (r->opens > 0) r->deleted = true;
-		else Files_RamFree(r);
+		if (r->opens > 0) {
+			r->deleted = true;
+		} else {
+			Files_RamFree(r);
+		}
 	}
 	Files_BackupName(path, name);
 	Backup_Delete(name);

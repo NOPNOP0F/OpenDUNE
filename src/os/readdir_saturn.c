@@ -18,6 +18,14 @@ typedef struct ReadDirContext {
 	bool ok;
 } ReadDirContext;
 
+/**
+ * Files_CdList() callback: pass a file of the disc to the engine's callback.
+ *
+ * @param name The file's name.
+ * @param size Its size.
+ * @param data The ReadDirContext.
+ * @return 0 to stop.
+ */
 static int ReadDir_ProcessCdFile(const char *name, uint32_t size, void *data)
 {
 	ReadDirContext *context = data;
@@ -31,7 +39,14 @@ static int ReadDir_ProcessCdFile(const char *name, uint32_t size, void *data)
 	return 1;
 }
 
-bool ReadDir_ProcessAllFiles(const char * dirpath, bool (*cb)(const char * name, const char * path, uint32 size))
+/**
+ * Call cb for every file in a directory: only the disc's root ("CD/") exists.
+ *
+ * @param dirpath The directory.
+ * @param cb Called with each file's name, path and size; false stops.
+ * @return False if the directory can't be read or cb stopped.
+ */
+bool ReadDir_ProcessAllFiles(const char *dirpath, bool (*cb)(const char *name, const char *path, uint32 size))
 {
 	ReadDirContext context;
 

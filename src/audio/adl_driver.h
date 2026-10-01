@@ -16,19 +16,11 @@ extern "C" {
 typedef void (*AdlOplWrite)(uint8_t reg, uint8_t val);
 
 extern void ADL_Init(AdlOplWrite write);
-
-/* Use an .ADL file, which must stay in memory while it is used (until the
- * next ADL_Load); returns 0 if it can't be used. */
 extern int ADL_Load(const uint8_t *file, uint32_t size);
-
-/* Start track (music or sound effect) at volume 0..255. */
 extern void ADL_Play(int track, int volume);
-
 extern void ADL_Callback(void);
 extern int ADL_IsChannelPlaying(int channel);
 extern void ADL_StopAll(void);
-
-/* Stop the music (channels 0-5), leaving sound effects (6-8) playing. */
 extern void ADL_StopMusic(void);
 
 #ifdef __cplusplus

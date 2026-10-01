@@ -983,14 +983,15 @@ static void GUI_Mentat_ShowHelp(void)
 	GUI_Mentat_Draw(true);
 }
 
-/**
- * Handles Click event for list in mentat window.
- *
- * @param w The widget.
- */
 #if defined(SATURN)
-bool g_mentatTextPending = false;
+bool g_mentatTextPending = false; /*!< The Mentat has more to say: a pad's A carries on. */
 
+/**
+ * Draw the selected help subject as selected (red), or as the others: it
+ * only looks selected while it has the pad's focus.
+ *
+ * @param show Whether to draw it as selected.
+ */
 void GUI_Mentat_ShowHelpSelection(bool show)
 {
 	Widget *w = GUI_Widget_Get_ByIndex(g_widgetMentatTail, s_selectedHelpSubject + 3);
@@ -1003,6 +1004,13 @@ void GUI_Mentat_ShowHelpSelection(bool show)
 	GUI_Widget_Draw(w);
 }
 
+/**
+ * The selected help subject, for moving through the list with a pad.
+ *
+ * @param first Filled with whether it is the first subject of all.
+ * @param last Filled with whether it is the last subject of all.
+ * @return The index of its widget.
+ */
 uint16 GUI_Mentat_HelpSelection(bool *first, bool *last)
 {
 	*first = s_topHelpList + s_selectedHelpSubject == 0;
@@ -1011,6 +1019,11 @@ uint16 GUI_Mentat_HelpSelection(bool *first, bool *last)
 }
 #endif
 
+/**
+ * Handles Click event for list in mentat window.
+ *
+ * @param w The widget.
+ */
 bool GUI_Mentat_List_Click(Widget *w)
 {
 	uint16 index;

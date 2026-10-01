@@ -15,21 +15,33 @@ enum { KEY_QUEUE = 16 };
 static volatile uint16_t s_padState;
 static volatile int s_pending;
 static SmpcDevice s_devices[2];
-static volatile int16_t s_mouseX, s_mouseY;   /* movement not taken yet */
-static volatile uint8_t s_keys[KEY_QUEUE];    /* keyboard key numbers */
-static volatile uint8_t s_keyMake[KEY_QUEUE];   /* 1: pressed, 0: released */
+static volatile int16_t s_mouseX, s_mouseY;   /*!< movement not taken yet */
+static volatile uint8_t s_keys[KEY_QUEUE];    /*!< keyboard key numbers */
+static volatile uint8_t s_keyMake[KEY_QUEUE]; /*!< 1: pressed, 0: released */
 static volatile uint8_t s_keyHead, s_keyTail;
 
+/**
+ * Ask the SMPC for the peripherals on both ports (INTBACK).
+ */
 static void Smpc_IntbackIssue(void)
 {
 	SMPC_SF = 1;
-	SMPC_IREG(0) = 0x00;        /* no SMPC status, peripheral data only */
-	SMPC_IREG(1) = 0x08;        /* PEN: return peripheral data, 15-byte mode */
+	/* no SMPC status, peripheral data only */
+	SMPC_IREG(0) = 0x00;
+	/* PEN: return peripheral data, 15-byte mode */
+	SMPC_IREG(1) = 0x08;
 	SMPC_IREG(2) = 0xF0;
 	SMPC_COMREG = SMPC_CMD_INTBACK;
 }
 
-/* Decode one device's data into d, and take its mouse movement and key. */
+/**
+ * Decode one device's data into d, and take its mouse movement and key.
+ *
+ * @param d The device to fill in.
+ * @param id Its SMPC peripheral ID.
+ * @param data Its data.
+ * @param size The size of the data.
+ */
 static void Smpc_DeviceDecode(SmpcDevice *d, uint8_t id, const uint8_t *data, int size)
 {
 	d->id = id;
@@ -86,6 +98,11 @@ static void Smpc_DeviceDecode(SmpcDevice *d, uint8_t id, const uint8_t *data, in
 	}
 }
 
+/**
+ * Collect the result of INTBACK into the devices of both ports.
+ *
+ * @return The buttons of the device on port 1.
+ */
 static uint16_t Smpc_IntbackCollect(void)
 {
 	int o = 0, port;
@@ -108,7 +125,8 @@ static uint16_t Smpc_IntbackCollect(void)
 			if (size == 0x0F && o < 32) size = SMPC_OREG(o++);
 			if (size > 15) size = 15;
 			for (i = 0; i < size && o < 32; i++) data[i] = SMPC_OREG(o++);
-			if (id == 0xFF) continue;       /* empty multitap connector */
+			/* empty multitap connector */
+			if (id == 0xFF) continue;
 			/* the first device of the port (the only one without a multitap) */
 			if (d->kind == SMPC_NONE) Smpc_DeviceDecode(d, id, data, i);
 		}
@@ -120,6 +138,12 @@ static uint16_t Smpc_IntbackCollect(void)
 	return s_devices[0].kind == SMPC_MOUSE ? 0 : s_devices[0].buttons;
 }
 
+/**
+ * Read the standard pad on port 1 (PAD_* bits of saturn_hw.h, 1 = pressed).
+ * Returns 0 if no pad is connected. Call during V-BLANK.
+ *
+ * @return The buttons.
+ */
 uint16_t Smpc_PadRead(void)
 {
 	while (SMPC_SF & 1) {}
@@ -128,6 +152,11 @@ uint16_t Smpc_PadRead(void)
 	return Smpc_IntbackCollect();
 }
 
+/**
+ * Issue an SMPC command without parameters (SNDOFF, ...) and wait for it.
+ *
+ * @param command The command (SMPC_CMD_*).
+ */
 void Smpc_Command(uint8_t command)
 {
 	/* keep the VBlank handler from issuing INTBACK in between */
@@ -137,11 +166,18 @@ void Smpc_Command(uint8_t command)
 	SMPC_SF = 1;
 	SMPC_COMREG = command;
 	while (SMPC_SF & 1) {}
-	s_pending = 0;              /* the output registers no longer hold pad data */
+	/* the output registers no longer hold pad data */
+	s_pending = 0;
 
 	Cpu_RestoreInterrupts(sr);
 }
 
+/**
+ * Read the real-time clock: year (2 bytes), weekday << 4 | month, day,
+ * hours, minutes, seconds, in BCD (SMPC User's Manual, Table 3.9).
+ *
+ * @param clock Filled with the 7 bytes.
+ */
 void Smpc_ReadClock(uint8_t clock[7])
 {
 	uint32_t sr = Cpu_DisableInterrupts();
@@ -149,7 +185,8 @@ void Smpc_ReadClock(uint8_t clock[7])
 
 	while (SMPC_SF & 1) {}
 	SMPC_SF = 1;
-	SMPC_IREG(0) = 0x01;        /* SMPC status (with the clock), no peripherals */
+	/* SMPC status (with the clock), no peripherals */
+	SMPC_IREG(0) = 0x01;
 	SMPC_IREG(1) = 0x00;
 	SMPC_IREG(2) = 0xF0;
 	SMPC_COMREG = SMPC_CMD_INTBACK;
@@ -162,19 +199,35 @@ void Smpc_ReadClock(uint8_t clock[7])
 	Cpu_RestoreInterrupts(sr);
 }
 
+/**
+ * Non-blocking alternative for use from the VBlank-in interrupt: collects
+ * the result of the previous INTBACK, then issues the next one.
+ */
 void Smpc_VBlank(void)
 {
-	if (SMPC_SF & 1) return;    /* previous command still running */
+	/* previous command still running */
+	if (SMPC_SF & 1) return;
 	if (s_pending) s_padState = Smpc_IntbackCollect();
 	Smpc_IntbackIssue();
 	s_pending = 1;
 }
 
+/**
+ * Pad state collected by Smpc_VBlank() (one frame old): the buttons of the
+ * device on port 1.
+ *
+ * @return The buttons.
+ */
 uint16_t Smpc_PadState(void)
 {
 	return s_padState;
 }
 
+/**
+ * The first device on ports 1 and 2.
+ *
+ * @param devices Filled with the devices of ports 1 and 2.
+ */
 void Smpc_Devices(SmpcDevice devices[2])
 {
 	uint32_t sr = Cpu_DisableInterrupts();
@@ -183,6 +236,12 @@ void Smpc_Devices(SmpcDevice devices[2])
 	Cpu_RestoreInterrupts(sr);
 }
 
+/**
+ * Mouse movement since the last call (x right, y up).
+ *
+ * @param dx Filled with the movement to the right.
+ * @param dy Filled with the movement up.
+ */
 void Smpc_MouseMotion(int *dx, int *dy)
 {
 	uint32_t sr = Cpu_DisableInterrupts();
@@ -192,6 +251,14 @@ void Smpc_MouseMotion(int *dx, int *dy)
 	Cpu_RestoreInterrupts(sr);
 }
 
+/**
+ * Take the next keyboard key event; returns 0 if there is none. key is the
+ * keyboard's key number (PS/2 set 2 codes), make 1 on press, 0 on release.
+ *
+ * @param key Filled with the key number.
+ * @param make Filled with 1 for a press, 0 for a release.
+ * @return 1 if there was one.
+ */
 int Smpc_KeyEvent(uint8_t *key, int *make)
 {
 	int got = 0;

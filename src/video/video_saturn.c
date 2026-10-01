@@ -23,20 +23,30 @@
 
 enum {
 	TOP = (VDP2_DISPLAY_H - SCREEN_HEIGHT) / 2,
-	EXTRA_LINES = 4     /* Video_SetOffset() shows up to 4 lines further down */
+	EXTRA_LINES = 4 /*!< Video_SetOffset() shows up to 4 lines further down */
 };
 
 static uint8 *s_framebuffer = NULL;
-static uint16 s_screenOffset = 0;   /* VGA start address, in units of 4 bytes */
+static uint16 s_screenOffset = 0; /*!< VGA start address, in units of 4 bytes */
 static bool s_repaintAll = true;
 
-/* The VBlank interrupt: the controllers, and the loading indicator. */
+/**
+ * The VBlank interrupt: the controllers, and the loading indicator.
+ */
 static void Video_VBlank(void)
 {
 	Smpc_VBlank();
 	Loading_VBlank();
 }
 
+/**
+ * Set up the screen: the frame buffer, VDP2, the controllers and the loading
+ * indicator.
+ *
+ * @param screen_magnification Not used.
+ * @param filter Not used.
+ * @return False if there is no memory for the frame buffer.
+ */
 bool Video_Init(int screen_magnification, VideoScaleFilter filter)
 {
 	VARIABLE_NOT_USED(screen_magnification);
@@ -58,12 +68,21 @@ bool Video_Init(int screen_magnification, VideoScaleFilter filter)
 	return true;
 }
 
+/**
+ * Free the frame buffer.
+ */
 void Video_Uninit(void)
 {
 	free(s_framebuffer);
 	s_framebuffer = NULL;
 }
 
+/**
+ * Copy rows of the frame buffer to the VDP2 bitmap.
+ *
+ * @param top The first row.
+ * @param bottom The row after the last.
+ */
 static void Video_CopyRows(uint16 top, uint16 bottom)
 {
 	const uint8 *src = s_framebuffer + (s_screenOffset << 2) + top * SCREEN_WIDTH;
@@ -75,6 +94,9 @@ static void Video_CopyRows(uint16 top, uint16 bottom)
 	}
 }
 
+/**
+ * Copy what changed of the screen to the bitmap, and read the controllers.
+ */
 void Video_Tick(void)
 {
 	struct dirty_area *area;
@@ -102,6 +124,13 @@ void Video_Tick(void)
 	GFX_Screen_SetClean(SCREEN_0);
 }
 
+/**
+ * Set colours of the palette, VGA style (6 bits per component).
+ *
+ * @param palette The colours, 3 bytes each.
+ * @param from The first colour.
+ * @param length How many.
+ */
 void Video_SetPalette(void *palette, int from, int length)
 {
 	const uint8 *p = palette;
@@ -113,22 +142,47 @@ void Video_SetPalette(void *palette, int from, int length)
 	}
 }
 
+/**
+ * Move the cursor.
+ *
+ * @param x Its column.
+ * @param y Its line.
+ */
 void Video_Mouse_SetPosition(uint16 x, uint16 y)
 {
 	PadSaturn_SetPosition(x, y);
 }
 
+/**
+ * Keep the cursor within a rectangle.
+ *
+ * @param minX The left edge.
+ * @param maxX The right edge.
+ * @param minY The top edge.
+ * @param maxY The bottom edge.
+ */
 void Video_Mouse_SetRegion(uint16 minX, uint16 maxX, uint16 minY, uint16 maxY)
 {
 	PadSaturn_SetRegion(minX, maxX, minY, maxY);
 }
 
+/**
+ * Show the frame buffer from an offset (the credits scroll that way).
+ *
+ * @param offset The offset, in 4-byte units.
+ */
 void Video_SetOffset(uint16 offset)
 {
 	s_screenOffset = offset;
 	s_repaintAll = true;
 }
 
+/**
+ * The frame buffer, the engine's SCREEN_0.
+ *
+ * @param size The size wanted.
+ * @return The frame buffer.
+ */
 void *Video_GetFrameBuffer(uint16 size)
 {
 	if (size > SCREEN_WIDTH * (SCREEN_HEIGHT + EXTRA_LINES)) {

@@ -19,7 +19,7 @@
 #define BUP_FUNCTION(n)     (*(uint32_t *)(BUP_VECTOR_ADDRESS + 4 * (n)))
 
 typedef struct BupConfig {
-	uint16_t unit_id;       /* 0: not connected */
+	uint16_t unit_id; /*!< 0: not connected */
 	uint16_t partition;
 } BupConfig;
 
@@ -37,7 +37,7 @@ typedef struct BupDir {
 } BupDir;
 
 typedef struct BupDate {
-	uint8_t year;           /* - 1980 */
+	uint8_t year; /*!< - 1980 */
 	uint8_t month, day, time, min, week;
 } BupDate;
 
@@ -62,6 +62,12 @@ static uint32_t *s_lib, *s_work;
 static BupConfig s_config[3];
 static int s_device = BACKUP_INTERNAL;
 
+/**
+ * Copy the backup library out of the BIOS and initialise it, with the reset
+ * button off while it runs.
+ *
+ * @return 0 if there is no memory for the library.
+ */
 static int Backup_Begin(void)
 {
 	s_lib = malloc(LIB_SIZE);
@@ -76,6 +82,9 @@ static int Backup_Begin(void)
 	return 1;
 }
 
+/**
+ * Free the backup library and turn the reset button back on.
+ */
 static void Backup_End(void)
 {
 	Smpc_Command(SMPC_CMD_RESENAB);
@@ -84,8 +93,12 @@ static void Backup_End(void)
 	s_lib = s_work = NULL;
 }
 
-/* Whether the selected device is there and formatted (formatting it if it
- * isn't, as the BIOS would). */
+/**
+ * Whether the selected device is there and formatted (formatting it if it
+ * isn't, as the BIOS would).
+ *
+ * @return 1 if the device can be used.
+ */
 static int Backup_Ready(void)
 {
 	BupStat stat;
@@ -94,7 +107,13 @@ static int Backup_Ready(void)
 	return 1;
 }
 
-/* Find a file by its exact name (BUP_Dir matches the start of names). */
+/**
+ * Find a file by its exact name (BUP_Dir matches the start of names).
+ *
+ * @param name The name.
+ * @param found Filled with the file's directory entry.
+ * @return 1 if the file is there.
+ */
 static int Backup_Find(const char *name, BupDir *found)
 {
 	BupDir dir[DIR_MAX];
@@ -111,7 +130,11 @@ static int Backup_Find(const char *name, BupDir *found)
 	return 0;
 }
 
-/* Now, as a backup library date stamp. */
+/**
+ * Now, as a backup library date stamp.
+ *
+ * @return The date stamp.
+ */
 static uint32_t Backup_Now(void)
 {
 	uint8_t clock[7];
@@ -129,6 +152,11 @@ static uint32_t Backup_Now(void)
 	return BUP_SetDate(&date);
 }
 
+/**
+ * Whether a backup cartridge is connected.
+ *
+ * @return 1 if there is one.
+ */
 int Backup_HasCartridge(void)
 {
 	int present;
@@ -138,7 +166,12 @@ int Backup_HasCartridge(void)
 	return present;
 }
 
-/* Free bytes on a device, or -1 if it isn't there. */
+/**
+ * Free bytes on a device, or -1 if it isn't there.
+ *
+ * @param device BACKUP_INTERNAL or BACKUP_CARTRIDGE.
+ * @return The free bytes.
+ */
 static int32_t Backup_DeviceFree(int device)
 {
 	BupStat stat;
@@ -151,6 +184,12 @@ static int32_t Backup_DeviceFree(int device)
 	return free_bytes;
 }
 
+/**
+ * Free bytes on a device, or -1 if it isn't there.
+ *
+ * @param device BACKUP_INTERNAL or BACKUP_CARTRIDGE.
+ * @return The free bytes.
+ */
 int32_t Backup_Free(int device)
 {
 	int32_t free_bytes;
@@ -160,11 +199,25 @@ int32_t Backup_Free(int device)
 	return free_bytes;
 }
 
+/**
+ * Use this device from now on (BACKUP_INTERNAL by default).
+ *
+ * @param device BACKUP_INTERNAL or BACKUP_CARTRIDGE.
+ */
 void Backup_Select(int device)
 {
 	s_device = device;
 }
 
+/**
+ * Read a file into memory from malloc(); returns 0 if there is none (or it
+ * can't be read).
+ *
+ * @param name The file's name (up to 11 characters).
+ * @param data Filled with the data, to free().
+ * @param size Filled with its size.
+ * @return 1 if the file was read.
+ */
 int Backup_Read(const char *name, uint8_t **data, uint32_t *size)
 {
 	BupDir dir;
@@ -194,6 +247,16 @@ int Backup_Read(const char *name, uint8_t **data, uint32_t *size)
 	return 1;
 }
 
+/**
+ * Write (or replace) a file; comment is shown by the BIOS's memory manager
+ * (up to 10 characters). Returns 0 if it doesn't fit.
+ *
+ * @param name The file's name (up to 11 characters).
+ * @param comment The comment.
+ * @param data The data.
+ * @param size Its size in bytes.
+ * @return 1 if the file was written.
+ */
 int Backup_Write(const char *name, const char *comment, const uint8_t *data, uint32_t size)
 {
 	uint32_t capacity = size + size / 128 + 16;
@@ -229,6 +292,11 @@ int Backup_Write(const char *name, const char *comment, const uint8_t *data, uin
 	return ok;
 }
 
+/**
+ * Delete a file, if it is there.
+ *
+ * @param name The file's name (up to 11 characters).
+ */
 void Backup_Delete(const char *name)
 {
 	if (!Backup_Begin()) return;

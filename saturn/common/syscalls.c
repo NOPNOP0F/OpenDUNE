@@ -30,6 +30,13 @@ static uintptr_t s_break = 0;
 static uintptr_t s_regionStart = 0;
 static uintptr_t s_regionEnd = 0;
 
+/**
+ * sbrk() for newlib's malloc(): the 1 MB of low work RAM, then high work RAM
+ * after the program.
+ *
+ * @param increment The bytes to add (or give back).
+ * @return The old end of the heap, or (void *)-1 (errno ENOMEM).
+ */
 void *_sbrk(ptrdiff_t increment)
 {
 	uintptr_t previous;
@@ -64,6 +71,14 @@ void *_sbrk(ptrdiff_t increment)
 	return (void *)previous;
 }
 
+/**
+ * write() for newlib: stdout and stderr to the console, the rest to files.
+ *
+ * @param fd The file descriptor.
+ * @param buffer The data.
+ * @param length Its size.
+ * @return The bytes written, or -1 (errno set).
+ */
 int _write(int fd, const void *buffer, size_t length)
 {
 	if (fd != 1 && fd != 2) return Files_Write(fd, buffer, length);
@@ -71,6 +86,13 @@ int _write(int fd, const void *buffer, size_t length)
 	return (int)length;
 }
 
+/**
+ * mkdir(): there are no directories to make.
+ *
+ * @param name Not used.
+ * @param mode Not used.
+ * @return -1 (errno EROFS).
+ */
 int mkdir(const char *name, mode_t mode)
 {
 	(void)name; (void)mode;
@@ -78,7 +100,13 @@ int mkdir(const char *name, mode_t mode)
 	return -1;
 }
 
-/* Time since power on; there is no calendar clock yet. */
+/**
+ * Time since power on; there is no calendar clock yet.
+ *
+ * @param tv Filled in.
+ * @param tz Not used.
+ * @return 0.
+ */
 int _gettimeofday(struct timeval *tv, void *tz)
 {
 	uint32_t ms = SaturnTimer_Ms();
@@ -88,16 +116,34 @@ int _gettimeofday(struct timeval *tv, void *tz)
 	return 0;
 }
 
+/**
+ * isatty() for newlib: stdin, stdout and stderr are the console.
+ *
+ * @param fd The file descriptor.
+ * @return 1 for those, else 0.
+ */
 int _isatty(int fd)
 {
 	return fd <= 2;
 }
 
+/**
+ * getpid() for newlib: there is one program.
+ *
+ * @return 1.
+ */
 int _getpid(void)
 {
 	return 1;
 }
 
+/**
+ * kill() for newlib: there is nothing to signal.
+ *
+ * @param pid Not used.
+ * @param signal Not used.
+ * @return -1 (errno EINVAL).
+ */
 int _kill(int pid, int signal)
 {
 	(void)pid; (void)signal;
@@ -105,6 +151,11 @@ int _kill(int pid, int signal)
 	return -1;
 }
 
+/**
+ * exit() ends here: show the exit status on the console and stop.
+ *
+ * @param status The exit status.
+ */
 void _exit(int status)
 {
 	char text[32];

@@ -15,7 +15,6 @@ extern void Console_Write(const char *text, int length);
 extern void Console_Release(void);
 extern void Console_Show(void);
 
-/* The console's 8x8 glyph of a character: 8 rows, bit 0 the leftmost pixel. */
 extern const uint8_t *Console_Glyph(char c);
 
-#endif /* SATURN_CONSOLE_H */
+#endif /*!< SATURN_CONSOLE_H */

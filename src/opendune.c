@@ -1320,8 +1320,8 @@ int main(int argc, char **argv)
 #endif
 #endif /* DOS */
 #if defined(SATURN)
-	/* messages only go to the log (saturn/tools/ymir-dump.py): the screen is
-	 * the game's; errors and crashes still bring the console up */
+	/* messages only go to the log in memory: the screen is the game's;
+	 * errors and crashes still bring the console up */
 	Console_Release();
 #endif
 	CrashLog_Init();

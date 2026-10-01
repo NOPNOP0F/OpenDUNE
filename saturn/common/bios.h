@@ -27,7 +27,9 @@
 #define SCU_VECTOR_VBLANK_IN   0x40
 #define SCU_MASK_VBLANK_IN     (1 << 0)
 
-/* Allow all interrupt levels on the calling SH-2. */
+/**
+ * Allow all interrupt levels on the calling SH-2.
+ */
 static __inline__ void Cpu_EnableInterrupts(void)
 {
 	uint32_t sr;
@@ -36,8 +38,12 @@ static __inline__ void Cpu_EnableInterrupts(void)
 	__asm__ volatile ("ldc %0, sr" : : "r" (sr));
 }
 
-/* Mask all interrupts on the calling SH-2; returns the old SR for
- * Cpu_RestoreInterrupts(). */
+/**
+ * Mask all interrupts on the calling SH-2; returns the old SR for
+ * Cpu_RestoreInterrupts().
+ *
+ * @return The old SR.
+ */
 static __inline__ uint32_t Cpu_DisableInterrupts(void)
 {
 	uint32_t sr;
@@ -46,9 +52,14 @@ static __inline__ uint32_t Cpu_DisableInterrupts(void)
 	return sr;
 }
 
+/**
+ * Restore the interrupt mask saved by Cpu_DisableInterrupts().
+ *
+ * @param sr The SR it returned.
+ */
 static __inline__ void Cpu_RestoreInterrupts(uint32_t sr)
 {
 	__asm__ volatile ("ldc %0, sr" : : "r" (sr));
 }
 
-#endif /* SATURN_BIOS_H */
+#endif /*!< SATURN_BIOS_H */
