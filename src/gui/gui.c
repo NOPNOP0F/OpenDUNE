@@ -2972,6 +2972,16 @@ char *GUI_String_Get_ByIndex(int16 stringID)
 			extern char g_saturnWindowStrings[3][52];
 			return g_saturnWindowStrings[-20 - stringID];
 		}
+
+		case -23: {
+			static char label[] = "Camera";
+			return label;
+		}
+
+		case -24: {
+			static char tiles[] = "Tiles", free[] = "Free";
+			return (g_gameConfig.camera != 0) ? free : tiles;
+		}
 #endif
 
 		case -10:

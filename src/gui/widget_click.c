@@ -625,7 +625,15 @@ static void GUI_Widget_GameControls_Click(Widget *w)
 					g_gameConfig.autoScroll ^= 0x1;
 					break;
 
+#if defined(SATURN)
 				case 5:
+					g_gameConfig.camera ^= 0x1;
+					break;
+
+				case 6:
+#else
+				case 5:
+#endif
 					loop = false;
 					break;
 
