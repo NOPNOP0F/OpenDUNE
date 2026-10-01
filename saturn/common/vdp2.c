@@ -98,6 +98,17 @@ void Vdp2_BitmapInit(void)
 }
 
 /**
+ * Show the overlay in front of the bitmap, or not.
+ *
+ * @param show Whether to show it.
+ */
+void Vdp2_OverlayShow(int show)
+{
+	/* N0TPON, N1ON, N0ON as Vdp2_BitmapInit() sets them */
+	VDP2_BGON = (1 << 8) | (show ? (1 << 1) : 0) | (1 << 0);
+}
+
+/**
  * Set a pixel of the overlay, in front of the bitmap (VDP2_OVERLAY_*).
  *
  * @param x Its column (0 to 511).

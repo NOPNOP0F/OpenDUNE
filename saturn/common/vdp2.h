@@ -25,6 +25,7 @@ extern void Vdp2_VBlankWait(void);
 extern void Vdp2_SetColor(int index, uint16_t rgb555);
 extern void Vdp2_SetScrollY(int y);
 
+extern void Vdp2_OverlayShow(int show);
 extern void Vdp2_OverlayPixel(int x, int y, int colour);
 
 #endif /*!< SATURN_VDP2_H */

@@ -90,6 +90,9 @@ void Console_Show(void)
 	s_state = CONSOLE_SHOWN;
 
 	Vdp2_BitmapInit();
+	/* what the game draws on the overlay (the loading indicator, the
+	 * reticle) would go on over the console */
+	Vdp2_OverlayShow(0);
 	Vdp2_SetColor(COLOR_BACK, RGB555(0, 0, 8));
 	Vdp2_SetColor(COLOR_TEXT, RGB555(31, 31, 31));
 	Console_DrawAll();
