@@ -9,13 +9,20 @@
 #include "saturn_hw.h"
 #include "vdp2.h"
 
+/* far more polls than a frame takes */
+#define VBLANK_POLLS_MAX 1000000UL
+
 /**
- * Wait for the start of the next vertical blank.
+ * Wait for the start of the next vertical blank. While the display is off,
+ * the hardware keeps the VBLANK flag set: then this gives up after a while
+ * instead of waiting forever.
  */
 void Vdp2_VBlankWait(void)
 {
-	while (VDP2_TVSTAT & VDP2_TVSTAT_VBLANK) {}
-	while (!(VDP2_TVSTAT & VDP2_TVSTAT_VBLANK)) {}
+	uint32_t polls;
+
+	for (polls = 0; polls < VBLANK_POLLS_MAX && (VDP2_TVSTAT & VDP2_TVSTAT_VBLANK); polls++) {}
+	for (polls = 0; polls < VBLANK_POLLS_MAX && !(VDP2_TVSTAT & VDP2_TVSTAT_VBLANK); polls++) {}
 }
 
 /**
@@ -25,9 +32,10 @@ void Vdp2_BitmapInit(void)
 {
 	int i;
 
-	/* display off while configuring */
-	VDP2_TVMD = 0x0000;
+	/* display off while configuring, from a vertical blank (waiting for
+	 * one once it is off would wait in vain) */
 	Vdp2_VBlankWait();
+	VDP2_TVMD = 0x0000;
 
 	/* Everything else as at power on: a boot menu (SAROO's, a cartridge's)
 	 * leaves its colour offset, colour calculation, windows, line scroll
