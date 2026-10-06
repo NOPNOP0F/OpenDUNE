@@ -99,11 +99,14 @@ enum {
 	CAMERA_Y = 40 + 5 * 16 + 8,
 	/* the 320x200 picture is centred in the 224 lines shown (video_saturn.c) */
 	OVERLAY_TOP = (VDP2_DISPLAY_H - SCREEN_HEIGHT) / 2,
-	/* the map view, for the free camera's cursor */
-	VIEW_LEFT = 0,
+	/* the map view, for the free camera's cursor: off the strips along its
+	 * left, top and bottom edges (widgets 39-42, edges included), where the
+	 * engine scrolls the map for a mouse resting there; pushing against
+	 * these limits scrolls it here instead */
+	VIEW_LEFT = 3,
 	VIEW_RIGHT = 239,
-	VIEW_TOP = 40,
-	VIEW_BOTTOM = 199,
+	VIEW_TOP = 41,
+	VIEW_BOTTOM = 197,
 	FREE_SPEED = 2,         /*!< free camera: pixels a frame, */
 	FREE_SPEED_FAST = 6,    /*!< with C */
 	EDGE_SCROLL_FRAMES = 6, /*!< a tile of scroll every so many frames at the edge, */
