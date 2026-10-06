@@ -63,6 +63,7 @@
 #define SMPC_SR         REG8(0x20100061UL)
 #define SMPC_SF         REG8(0x20100063UL)
 
+#define SMPC_CMD_SSHOFF     0x03 /*!< slave SH-2 off */
 #define SMPC_CMD_INTBACK    0x10
 #define SMPC_CMD_RESENAB    0x19 /*!< reset button on */
 #define SMPC_CMD_RESDISA    0x1A /*!< reset button off */

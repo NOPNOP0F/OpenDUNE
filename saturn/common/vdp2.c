@@ -29,6 +29,13 @@ void Vdp2_BitmapInit(void)
 	VDP2_TVMD = 0x0000;
 	Vdp2_VBlankWait();
 
+	/* Everything else as at power on: a boot menu (SAROO's, a cartridge's)
+	 * leaves its colour offset, colour calculation, windows, line scroll
+	 * and sprite priorities set, any of which can hide the layers. The
+	 * status and counter registers (0x004-0x00C) are read only. */
+	VDP2_REG(0x002) = 0;
+	for (i = 0x00E; i <= 0x11E; i += 2) VDP2_REG(i) = 0;
+
 	/* colour RAM mode 0, VRAM banks not partitioned */
 	VDP2_RAMCTL = 0x0000;
 
