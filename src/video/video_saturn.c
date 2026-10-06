@@ -2,8 +2,10 @@
  *
  * SCREEN_0 lives in work RAM; every tick the rows marked dirty are copied
  * into the VDP2 NBG0 bitmap (512x256, 8bpp), with the 320x200 picture
- * centred in the 320x224 display. The palette goes to colour RAM. The pad
- * is read here too (input/pad_saturn.c), as other drivers read events. */
+ * centred in the 320x224 display. The palette goes to colour RAM in the
+ * vertical blank (written while the picture is drawn, colour RAM shows stray
+ * dots on the hardware). The pad is read here too (input/pad_saturn.c), as
+ * other drivers read events. */
 
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +16,7 @@
 #include "../input/pad_saturn.h"
 #include "../os/error.h"
 
+#include "bios.h"
 #include "console.h"
 #include "loading.h"
 #include "saturn_hw.h"
@@ -29,12 +32,22 @@ enum {
 static uint8 *s_framebuffer = NULL;
 static uint16 s_screenOffset = 0; /*!< VGA start address, in units of 4 bytes */
 static bool s_repaintAll = true;
+static uint16 s_palette[256];                     /*!< the colours, RGB555, for colour RAM */
+static volatile int s_paletteFrom = 256;          /*!< the first changed since the last vertical blank, */
+static volatile int s_paletteTo = 0;              /*!< and the one after the last */
 
 /**
- * The VBlank interrupt: the controllers, and the loading indicator.
+ * The VBlank interrupt: the colours changed, the controllers, and the
+ * loading indicator.
  */
 static void Video_VBlank(void)
 {
+	int i;
+
+	for (i = s_paletteFrom; i < s_paletteTo; i++) Vdp2_SetColor(i, s_palette[i]);
+	s_paletteFrom = 256;
+	s_paletteTo = 0;
+
 	Smpc_VBlank();
 	Loading_VBlank();
 }
@@ -134,12 +147,20 @@ void Video_Tick(void)
 void Video_SetPalette(void *palette, int from, int length)
 {
 	const uint8 *p = palette;
+	uint32 sr;
 	int i;
 
-	/* VGA palette entries are 6 bits per component */
+	if (from < 0 || length <= 0 || from + length > 256) return;
+
+	/* VGA palette entries are 6 bits per component; Video_VBlank() writes
+	 * them to colour RAM */
+	sr = Cpu_DisableInterrupts();
 	for (i = from; i < from + length; i++, p += 3) {
-		Vdp2_SetColor(i, RGB555(p[0] >> 1, p[1] >> 1, p[2] >> 1));
+		s_palette[i] = RGB555(p[0] >> 1, p[1] >> 1, p[2] >> 1);
 	}
+	if (from < s_paletteFrom) s_paletteFrom = from;
+	if (from + length > s_paletteTo) s_paletteTo = from + length;
+	Cpu_RestoreInterrupts(sr);
 }
 
 /**
