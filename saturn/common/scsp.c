@@ -37,6 +37,8 @@ enum {
 #define KEY_ON_EXECUTE  (1 << 12)
 #define KEY_ON          (1 << 11)
 #define PCM_8BIT        (1 << 4)
+#define EG_STATE        (3 << 5)                            /*!< SGC, in the monitor */
+#define EG_RELEASE      (3 << 5)
 
 /* Sound RAM blocks, in address order, covering all of it. */
 typedef struct Block {
@@ -255,12 +257,21 @@ void Scsp_Key(int slot, int on)
  */
 void Scsp_NoteOn(int slot, const ScspNote *note)
 {
+	uint32_t sr;
+	int wait;
+
 	/* a slot still sounding (a one-shot looping round its silent tail) is
-	 * only restarted if the SCSP sees the key off first: it looks at the
-	 * keys once a sample (22.7 us), and a key off just before (DSP_Stop())
-	 * may not have been seen yet either */
+	 * only restarted if the SCSP has seen the key off first: it looks at
+	 * the keys once a sample (22.7 us), but an emulator may run it behind
+	 * the CPU, so wait for the monitor to show the release (with the timer
+	 * handler, which moves the monitor too, kept out) */
+	sr = Cpu_DisableInterrupts();
 	Scsp_NoteOff(slot);
-	SaturnTimer_DelayUs(30);
+	SCSP_MONITOR = (uint16_t)(slot << 11);
+	for (wait = 0; wait < 40 && (SCSP_MONITOR & EG_STATE) != EG_RELEASE; wait++) {
+		SaturnTimer_DelayUs(5);
+	}
+	Cpu_RestoreInterrupts(sr);
 
 	SCSP_SLOT(slot, 0x00) = PCM_8BIT | ((note->loop ? 1 : 0) << 5) | ((note->offset >> 16) & 0xF);
 	SCSP_SLOT(slot, 0x02) = (uint16_t)note->offset;
