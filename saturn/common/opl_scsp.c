@@ -3,9 +3,12 @@
  * Each of the 9 OPL channels gets two SCSP slots, modulator and carrier,
  * playing one of the four OPL waveforms from a 1024-sample 16-bit table
  * holding 4 periods of 256 samples: the SCSP's modulation goes up to
- * +-1024 samples (beyond, it wraps round into noise), which is then the
- * OPL's +-8 pi, the depth of a full-level modulator:
- *   frequency   fnum * 49716 / 2^(20 - block) * multiple, as OCT/FNS;
+ * +-1024 samples, which is then the OPL's +-8 pi, the depth of a full-level
+ * modulator, and the wave mask (MSK) keeps the modulated reads in the table
+ * (without it they run on into the next table, a distortion on the loudest
+ * notes):
+ *   frequency   fnum * 49716 / 2^(20 - block) * multiple, as OCT/FNS
+ *               (with MSK);
  *               channels sounding above 15 kHz drop by octaves to 10 kHz or
  *               below, 9 dB quieter (at the OPL's 49.7 kHz the credits'
  *               20 kHz tone is barely heard, its audible sidebands 9 dB down;
@@ -51,7 +54,8 @@ enum {
 	MIX_LEVEL = 5,      /*!< DISDL of sounding operators: -12 dB */
 	X_MAX = 632739,     /*!< 15 kHz in OplScsp_Frequency() units */
 	X_SHIFTED = 421826, /*!< 10 kHz: where tones above X_MAX drop to */
-	SHIFTED_ATT = 24    /*!< and how much quieter they get: 9 dB in TL units */
+	SHIFTED_ATT = 24,   /*!< and how much quieter they get: 9 dB in TL units */
+	PITCH_MSK = 0x8000  /*!< in OCT/FNS: wrap reads round the table (its size, LEA, a power of 2) */
 };
 
 /* operator register offset of each channel's modulator; carrier is +3 */
@@ -189,7 +193,7 @@ static uint32_t OplScsp_ChannelTop(int channel)
  *
  * @param channel The channel.
  * @param op The operator.
- * @return The OCT/FNS value.
+ * @return The OCT/FNS value, with MSK.
  */
 static uint16_t OplScsp_Pitch(int channel, int op)
 {
@@ -204,12 +208,12 @@ static uint16_t OplScsp_Pitch(int channel, int op)
 
 	/* rate / 44100 in 16.16: x * 49716 * 256 / 2^20 / 44100 / 2 = x * 9.01877 */
 	ratio = ((uint64_t)x * 2364218) >> 18;
-	if (ratio == 0) return Scsp_Pitch(-8, 0);
+	if (ratio == 0) return PITCH_MSK | Scsp_Pitch(-8, 0);
 	while (ratio >= (2u << 16)) { ratio >>= 1; octave++; }
 	while (ratio < (1u << 16)) { ratio <<= 1; octave--; }
-	if (octave > 7) return Scsp_Pitch(7, 1023);
-	if (octave < -8) return Scsp_Pitch(-8, 0);
-	return Scsp_Pitch(octave, (uint16_t)((ratio - 65536) >> 6));
+	if (octave > 7) return PITCH_MSK | Scsp_Pitch(7, 1023);
+	if (octave < -8) return PITCH_MSK | Scsp_Pitch(-8, 0);
+	return PITCH_MSK | Scsp_Pitch(octave, (uint16_t)((ratio - 65536) >> 6));
 }
 
 /**
