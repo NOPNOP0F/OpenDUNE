@@ -18,8 +18,8 @@
  *               (+-8 pi, like the OPL's full-level modulator); additive
  *               channels instead send both slots to the output
  *   feedback    the modulator modulates itself by its last two outputs,
- *               summed as on the OPL, MDL = feedback + 1 (matched against
- *               a recording of the DOS game; feedback 1-3 fall below the
+ *               summed as on the OPL, MDL = feedback + 2 (the OPL's depth:
+ *               feedback 7 is +-4 pi; feedback 1 and 2 fall below the
  *               SCSP's smallest depth, MDL 5, and go without)
  *   envelope    operators with a fast attack use the SCSP's envelope:
  *               OPL rates 0-15 -> SCSP attack 2 * rate + 1, decay and
@@ -376,7 +376,7 @@ static void OplScsp_Setup(int channel, int op)
 		 * OPL does. In the SCSP's stack of the last 64 slot outputs, offset
 		 * 0 is this slot two samples ago and 32 one sample ago; the older
 		 * alone makes strong feedback chaotic: noise instead of a tone. */
-		modulation = (uint16_t)(((((c0 >> 1) & 7) + 1) << 12) | 32);
+		modulation = (uint16_t)(((((c0 >> 1) & 7) + 2) << 12) | 32);
 	} else if (op == 1 && !additive) {
 		/* the modulator's output moves the carrier's phase */
 		uint16_t source = (uint16_t)((OplScsp_Slot(channel, 0) - slot) & 0x3F);
