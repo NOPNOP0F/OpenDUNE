@@ -298,6 +298,14 @@ static void PadSaturn_Blip(void)
 
 
 /**
+ * The sound of a button that has nothing to do.
+ */
+static void PadSaturn_InvalidSound(void)
+{
+	if (g_gameConfig.sounds != 0) DSP_Saturn_Blip(DSP_BLIP_INVALID);
+}
+
+/**
  * The sound of pressing A on what is focused.
  */
 static void PadSaturn_UseSound(void)
@@ -342,7 +350,10 @@ static void PadSaturn_CommandButton(uint16 index)
 
 	if (g_selectionType != SELECTIONTYPE_UNIT) return;
 	w = GUI_Widget_Get_ByIndex(g_widgetLinkedListHead, index);
-	if (w == NULL || w->flags.invisible || w->shortcut == 0) return;
+	if (w == NULL || w->flags.invisible || w->shortcut == 0) {
+		PadSaturn_InvalidSound();
+		return;
+	}
 	PadSaturn_Key(w->shortcut);
 }
 
@@ -358,7 +369,10 @@ static void PadSaturn_SideBarButton(uint16 index)
 	Widget *w = GUI_Widget_Get_ByIndex(g_widgetLinkedListHead, index);
 	Widget *other = GUI_Widget_Get_ByIndex(g_widgetLinkedListHead, (index == 4) ? 5 : 4);
 
-	if (w == NULL || w->flags.invisible) return;
+	if (w == NULL || w->flags.invisible) {
+		PadSaturn_InvalidSound();
+		return;
+	}
 	/* the key goes to one of them only */
 	if (other != NULL && other->shortcut == KEY_SIDE_BAR) other->shortcut = 0;
 	w->shortcut = KEY_SIDE_BAR;
@@ -2081,7 +2095,10 @@ void PadSaturn_GameLoop(void)
 	}
 
 	o = PadSaturn_NextObject(structures, index);
-	if (o == NULL) return;
+	if (o == NULL) {
+		PadSaturn_InvalidSound();
+		return;
+	}
 
 	/* as clicking the picture of the selection does: centre, then select */
 	packed = Tile_PackTile(o->position);

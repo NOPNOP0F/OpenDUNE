@@ -43,6 +43,7 @@ typedef struct BlipNote {
 	uint32 carrier;   /*!< phase step of the sounding operator */
 	uint32 modulator; /*!< and of the one modulating it */
 	int32 depth;      /*!< modulation: phase per unit of the sine table */
+	bool buzz;        /*!< sounding the buzz's wave instead of a sine */
 	uint32 hold;      /*!< samples at full level */
 	int32 decay;      /*!< level kept per sample after that, Q30 */
 } BlipNote;
@@ -52,11 +53,35 @@ typedef struct BlipNote {
  * using what is focused two FM notes, 932 then 1176 Hz 65 ms later (carrier
  * at 3 and modulator at 5 times the note, index 1.1), each gone in 80 ms. */
 static const BlipNote s_focusNotes[] = {
-	{ 0, 117259425, 0, 0, 529, 1072873198 }
+	{ 0, 117259425, 0, 0, false, 529, 1072873198 }
 };
 static const BlipNote s_useNotes[] = {
-	{ 0, 272423640, 454039400, 22948, 353, 1071361785 },
-	{ 2867, 343451296, 572418827, 22948, 353, 1071361785 }
+	{ 0, 272423640, 454039400, 22948, false, 353, 1071361785 },
+	{ 2867, 343451296, 572418827, 22948, false, 353, 1071361785 }
+};
+
+/* Something that can't be done: a buzz of odd harmonics, at 38.9 Hz, then a
+ * fifth lower 114 ms later, each cut off after 95 ms. */
+static const BlipNote s_invalidNotes[] = {
+	{ 0, 3789505, 0, 0, true, 4190, 1065365207 },
+	{ 5027, 2528285, 0, 0, true, 4278, 1065365207 }
+};
+
+/* The buzz's wave: its odd harmonics 1 to 137, levels (of 32767) and phases
+ * (of 4096 a cycle), measured from the Mega Drive's sound. */
+static const uint16 s_buzzHarmonics[][2] = {
+	{ 1266, 4067 }, { 32767, 2518 }, { 2773, 2390 }, { 4070, 1415 }, { 3689, 3153 }, { 1554, 3973 },
+	{ 17958, 80 }, { 26899, 1650 }, { 11035, 1265 }, { 1206, 1710 }, { 5825, 1841 }, { 23023, 3999 },
+	{ 25875, 3440 }, { 1477, 2082 }, { 2307, 2157 }, { 12202, 135 }, { 15506, 1637 }, { 978, 850 },
+	{ 4108, 475 }, { 559, 2955 }, { 7225, 2044 }, { 1308, 2519 }, { 19543, 3039 }, { 14270, 2625 },
+	{ 3521, 2512 }, { 15427, 1727 }, { 1615, 987 }, { 3971, 3086 }, { 10069, 2407 }, { 1707, 2827 },
+	{ 3289, 1418 }, { 9861, 3106 }, { 2885, 2776 }, { 10666, 2130 }, { 771, 3454 }, { 6477, 3408 },
+	{ 3596, 3018 }, { 1659, 271 }, { 6679, 1883 }, { 2745, 3625 }, { 12455, 3102 }, { 3518, 530 },
+	{ 0, 0 }, { 4102, 1656 }, { 2548, 3474 }, { 11360, 2840 }, { 9098, 334 }, { 2126, 1807 },
+	{ 1530, 1442 }, { 1939, 3258 }, { 8028, 2573 }, { 10220, 112 }, { 4207, 1676 }, { 0, 0 },
+	{ 1107, 3092 }, { 4784, 2285 }, { 8184, 3984 }, { 4792, 1466 }, { 1231, 2997 }, { 0, 0 },
+	{ 2504, 1992 }, { 5589, 3723 }, { 4266, 1238 }, { 1536, 2811 }, { 0, 0 }, { 1188, 1724 },
+	{ 3284, 3494 }, { 3082, 1027 }, { 1442, 2604 },
 };
 
 typedef struct Blip {
@@ -65,8 +90,9 @@ typedef struct Blip {
 	uint8 level;    /*!< TL */
 } Blip;
 
-static Blip s_blips[2] = { { -1, 0, 0 }, { -1, 0, 0 } };
+static Blip s_blips[3] = { { -1, 0, 0 }, { -1, 0, 0 }, { -1, 0, 0 } };
 static int16 s_sine[1 << SINE_BITS];
+static int16 *s_buzz = NULL; /*!< the buzz's wave, while the blips are made */
 
 static bool s_ready = false;
 static int32 s_scratch = -1;
@@ -115,6 +141,39 @@ static void DSP_BuildSine(void)
 }
 
 /**
+ * The buzz's wave, one period like the sine's, from its harmonics; NULL if
+ * there is no memory.
+ */
+static void DSP_BuildBuzz(void)
+{
+	int32 *sum = calloc(1 << SINE_BITS, sizeof(int32));
+	int32 peak = 1;
+	int n, k;
+
+	s_buzz = malloc((1 << SINE_BITS) * sizeof(int16));
+	if (sum == NULL || s_buzz == NULL) {
+		free(sum);
+		free(s_buzz);
+		s_buzz = NULL;
+		return;
+	}
+	for (k = 0; k < (int)(sizeof(s_buzzHarmonics) / sizeof(s_buzzHarmonics[0])); k++) {
+		uint32 harmonic = 2 * k + 1;
+
+		if (s_buzzHarmonics[k][0] == 0) continue;
+		for (n = 0; n < (1 << SINE_BITS); n++) {
+			uint32 phase = (harmonic * n + s_buzzHarmonics[k][1]) & ((1 << SINE_BITS) - 1);
+			sum[n] += (s_sine[phase] * s_buzzHarmonics[k][0]) >> 15;
+		}
+	}
+	for (n = 0; n < (1 << SINE_BITS); n++) {
+		if (abs(sum[n]) > peak) peak = abs(sum[n]);
+	}
+	for (n = 0; n < (1 << SINE_BITS); n++) s_buzz[n] = (int16)((int64_t)sum[n] * 32767 / peak);
+	free(sum);
+}
+
+/**
  * Render a blip's notes as 16-bit samples into sound RAM, followed by its
  * silent tail.
  *
@@ -134,12 +193,15 @@ static void DSP_RenderBlip(Blip *b, const BlipNote *notes, int count, uint32 sam
 	for (k = 0; k < count; k++) {
 		const BlipNote *note = &notes[k];
 		uint32 end = (k + 1 < count) ? notes[k + 1].start : samples;
+		const int16 *wave = note->buzz ? s_buzz : s_sine;
 		uint32 carrier = 0, modulator = 0, n;
 		int64_t amp = (int64_t)1 << 30;
 
+		if (wave == NULL) continue;
+
 		for (n = note->start; n < end && n < samples; n++) {
 			int32 mod = s_sine[modulator >> (32 - SINE_BITS)] * note->depth;
-			int32 v = s_sine[(uint32)(carrier + (uint32)mod) >> (32 - SINE_BITS)];
+			int32 v = wave[(uint32)(carrier + (uint32)mod) >> (32 - SINE_BITS)];
 
 			pcm[n] = (int16)((v * amp) >> 30);
 			carrier += note->carrier;
@@ -169,9 +231,14 @@ bool DSP_Init(void)
 	s_ready = (s_scratch >= 0);
 
 	DSP_BuildSine();
+	DSP_BuildBuzz();
 	DSP_RenderBlip(&s_blips[DSP_BLIP_FOCUS], s_focusNotes, (int)(sizeof(s_focusNotes) / sizeof(s_focusNotes[0])), 9100, 0x28);
 	/* 4.7 dB louder, as in the Mega Drive version */
 	DSP_RenderBlip(&s_blips[DSP_BLIP_USE], s_useNotes, (int)(sizeof(s_useNotes) / sizeof(s_useNotes[0])), 6400, 0x1B);
+	/* 2.3 dB quieter than the focus sound, as in the Mega Drive version */
+	DSP_RenderBlip(&s_blips[DSP_BLIP_INVALID], s_invalidNotes, (int)(sizeof(s_invalidNotes) / sizeof(s_invalidNotes[0])), 10400, 0x2E);
+	free(s_buzz);
+	s_buzz = NULL;
 	return s_ready;
 }
 

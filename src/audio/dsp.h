@@ -10,10 +10,12 @@ extern bool DSP_Init(void);
 extern void DSP_Uninit(void);
 
 #if defined(SATURN)
-/** The pad's blips: moving the focus, and using what is focused. */
+/** The pad's blips: moving the focus, using what is focused, and asking
+ * for something that can't be done. */
 typedef enum DSPBlip {
 	DSP_BLIP_FOCUS,
-	DSP_BLIP_USE
+	DSP_BLIP_USE,
+	DSP_BLIP_INVALID
 } DSPBlip;
 
 extern void *DSP_Saturn_KeepVoc(void *voc, uint32 *size);
