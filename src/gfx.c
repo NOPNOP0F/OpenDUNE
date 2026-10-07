@@ -172,7 +172,19 @@ void GFX_Init(void)
 		totalSize += GFX_Screen_GetSize_ByIndex(i);
 	}
 
+#if defined(SATURN)
+	{
+		/* In the program's area, high work RAM: the SH-2 reaches it several
+		 * times faster than the low work RAM malloc() hands out first, and
+		 * the screens are drawn on and copied all the time. */
+		static uint32 screens[(0xFBF4 + 0xFA00 + 0xFD0D + 3) / 4];
+
+		assert(totalSize <= sizeof(screens));
+		screenBuffers = (uint8 *)screens;
+	}
+#else
 	screenBuffers = calloc(1, totalSize);
+#endif
 
 	for (i = 1; i < GFX_SCREEN_BUFFER_COUNT; i++) {
 		s_screenBuffer[i] = screenBuffers;
@@ -193,7 +205,9 @@ void GFX_Uninit(void)
 {
 	int i;
 
+#if !defined(SATURN)
 	free(s_screenBuffer[1]);
+#endif
 
 	for (i = 0; i < GFX_SCREEN_BUFFER_COUNT; i++) {
 		s_screenBuffer[i] = NULL;

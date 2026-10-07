@@ -29,6 +29,8 @@ enum {
 	EXTRA_LINES = 4 /*!< Video_SetOffset() shows up to 4 lines further down */
 };
 
+/* SCREEN_0, in high work RAM (see GFX_Init()) */
+static uint32 s_framebufferMemory[(SCREEN_WIDTH * (SCREEN_HEIGHT + EXTRA_LINES) + 3) / 4];
 static uint8 *s_framebuffer = NULL;
 static uint16 s_screenOffset = 0; /*!< VGA start address, in units of 4 bytes */
 static bool s_repaintAll = true;
@@ -58,18 +60,14 @@ static void Video_VBlank(void)
  *
  * @param screen_magnification Not used.
  * @param filter Not used.
- * @return False if there is no memory for the frame buffer.
+ * @return True, always.
  */
 bool Video_Init(int screen_magnification, VideoScaleFilter filter)
 {
 	VARIABLE_NOT_USED(screen_magnification);
 	VARIABLE_NOT_USED(filter);
 
-	s_framebuffer = calloc(1, SCREEN_WIDTH * (SCREEN_HEIGHT + EXTRA_LINES));
-	if (s_framebuffer == NULL) {
-		Error("Failed to allocate %d bytes.\n", SCREEN_WIDTH * (SCREEN_HEIGHT + EXTRA_LINES));
-		return false;
-	}
+	s_framebuffer = (uint8 *)s_framebufferMemory;
 
 	/* from here on the game owns the screen; the console only records */
 	Console_Release();
@@ -82,11 +80,10 @@ bool Video_Init(int screen_magnification, VideoScaleFilter filter)
 }
 
 /**
- * Free the frame buffer.
+ * Forget the frame buffer.
  */
 void Video_Uninit(void)
 {
-	free(s_framebuffer);
 	s_framebuffer = NULL;
 }
 
