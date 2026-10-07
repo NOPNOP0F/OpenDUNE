@@ -1836,12 +1836,20 @@ void PadSaturn_HandleEvents(Widget *list)
 	}
 
 	if (s_cameraActive) {
-		/* back from the camera: focus the nearest button */
+		/* back from the camera: the button focused before, if it is still
+		 * shown, or else the nearest one */
 		PadSaturn_ReleaseA();
 		s_cameraActive = false;
 		s_reticleSnap = false;
 		s_edgeX = s_edgeY = 0;
-		s_focus = NULL;
+		if (PadSaturn_InList(list, s_focus)) {
+			int x, y;
+
+			PadSaturn_WidgetPosition(s_focus, &x, &y);
+			PadSaturn_SetPosition((uint16)(x + s_focus->width / 2), (uint16)(y + s_focus->height / 2));
+		} else {
+			s_focus = NULL;
+		}
 	}
 	PadSaturn_StickScroll(list);
 
