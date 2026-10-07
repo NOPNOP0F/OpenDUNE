@@ -24,7 +24,8 @@ PREFIX=${PREFIX:-$HERE/install}
 WORKDIR=${WORKDIR:-$HERE/work}
 NCPU=${NCPU:-$(nproc)}
 
-# makeinfo is not needed; don't let a missing one break the build.
+# makeinfo is not needed; don't let a missing one break the build (the
+# Makefiles only take it from the command line, see the make calls).
 export MAKEINFO=true
 export PATH="$PREFIX/bin:$PATH"
 
@@ -65,8 +66,8 @@ stage() {
 build_binutils() {
 	"$WORKDIR/src/binutils-$BINUTILS_VER/configure" --target=$TARGET --prefix="$PREFIX" \
 		--enable-targets=all --disable-nls --disable-werror --disable-gdb --disable-gprofng
-	make -j"$NCPU"
-	make install
+	make -j"$NCPU" MAKEINFO=true
+	make install MAKEINFO=true
 }
 
 build_gcc_bootstrap() {
@@ -74,15 +75,14 @@ build_gcc_bootstrap() {
 		--with-cpu=m2 --enable-languages=c --without-headers --with-newlib \
 		--disable-multilib --disable-shared --disable-threads --disable-nls \
 		--disable-libssp --disable-libgomp --disable-libquadmath
-	make -j"$NCPU" all-gcc all-target-libgcc
-	make install-gcc install-target-libgcc
+	make -j"$NCPU" MAKEINFO=true all-gcc all-target-libgcc
+	make install-gcc install-target-libgcc MAKEINFO=true
 }
 
 build_newlib() {
 	"$WORKDIR/src/newlib-$NEWLIB_VER/configure" --target=$TARGET --prefix="$PREFIX" \
 		--disable-multilib --enable-newlib-nano-malloc --enable-target-optspace \
 		--disable-newlib-supplied-syscalls --disable-nls
-	# libgloss builds its Texinfo manual unless told otherwise on the command line
 	make -j"$NCPU" MAKEINFO=true
 	make install MAKEINFO=true
 }
@@ -92,8 +92,8 @@ build_gcc_final() {
 		--with-cpu=m2 --enable-languages=c,c++ --disable-libstdcxx --with-newlib --enable-lto \
 		--disable-multilib --disable-shared --disable-threads --disable-nls \
 		--disable-libssp --disable-libgomp --disable-libquadmath
-	make -j"$NCPU"
-	make install
+	make -j"$NCPU" MAKEINFO=true
+	make install MAKEINFO=true
 }
 
 echo "==> Fetching sources"
