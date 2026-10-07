@@ -1190,9 +1190,10 @@ static void PadSaturn_StickScroll(Widget *list)
 	int sy;
 	uint32 sr;
 
-	/* on the Mentat's list the stick moves the selection (PadSaturn_MentatList) */
+	/* on the Mentat's list and the construction list the stick moves the
+	 * selection (PadSaturn_MentatList(), PadSaturn_FactoryList()) */
 	for (w = list; w != NULL; w = GUI_Widget_GetNext(w)) {
-		if (w->clickProc == &GUI_Mentat_List_Click) return;
+		if (w->clickProc == &GUI_Mentat_List_Click || w->clickProc == &GUI_Production_List_Click) return;
 	}
 
 	sr = Cpu_DisableInterrupts();
@@ -1701,6 +1702,71 @@ static void PadSaturn_WaitForController(void)
 }
 
 /**
+ * The construction window's list keeps its own selection: with the focus on
+ * the list, up and down move that selection (scrolling the list at its ends,
+ * as its arrow buttons do) and the focus follows it; past the first and the
+ * last item they move the focus as anywhere else. The 3D Controller's stick
+ * moves the selection too.
+ *
+ * @param list The widgets of the screen.
+ * @param direction The D-pad direction, set to NO_DIRECTION once used.
+ */
+static void PadSaturn_FactoryList(Widget *list, uint16 *direction)
+{
+	Widget *w, *up = NULL, *down = NULL;
+	bool hasList = false, quiet = false;
+	uint32 sr;
+	int stick, x, y;
+
+	for (w = list; w != NULL; w = GUI_Widget_GetNext(w)) {
+		if (w->clickProc == &GUI_Production_List_Click) hasList = true;
+		if (w->clickProc == &GUI_Production_Up_Click) up = w;
+		if (w->clickProc == &GUI_Production_Down_Click) down = w;
+	}
+	if (!hasList || up == NULL || down == NULL) return;
+
+	/* the stick: a line each time enough travel has been summed up */
+	sr = Cpu_DisableInterrupts();
+	stick = s_stickY;
+	if (stick >= STICK_STEP) {
+		s_stickY -= STICK_STEP;
+	} else if (stick <= -STICK_STEP) {
+		s_stickY += STICK_STEP;
+	}
+	s_stickX = 0;
+	Cpu_RestoreInterrupts(sr);
+	s_stickLast = false;
+
+	if (s_focus == NULL || s_focus->clickProc != &GUI_Production_List_Click) return;
+
+	if (*direction == NO_DIRECTION && stick >= STICK_STEP) {
+		*direction = 4;
+		quiet = true;
+	} else if (*direction == NO_DIRECTION && stick <= -STICK_STEP) {
+		*direction = 0;
+		quiet = true;
+	}
+
+	if (*direction == 0 && g_factoryWindowBase + g_factoryWindowSelected > 0) {
+		GUI_Production_Up_Click(up);
+	} else if (*direction == 4 && g_factoryWindowBase + g_factoryWindowSelected + 1 < g_factoryWindowTotal) {
+		GUI_Production_Down_Click(down);
+	} else {
+		/* the stick doesn't leave the list */
+		if (quiet) *direction = NO_DIRECTION;
+		return;
+	}
+	*direction = NO_DIRECTION;
+	if (!quiet) PadSaturn_Blip();
+
+	w = GUI_Widget_Get_ByIndex(list, 46 + g_factoryWindowSelected);
+	if (w == NULL) return;
+	s_focus = w;
+	PadSaturn_WidgetPosition(w, &x, &y);
+	PadSaturn_SetPosition((uint16)(x + w->width / 2), (uint16)(y + w->height / 2));
+}
+
+/**
  * Move the focus or the camera; GUI_Widget_HandleEvents() calls it with the
  * widgets of the screen on show.
  *
@@ -1787,8 +1853,22 @@ void PadSaturn_HandleEvents(Widget *list)
 		PadSaturn_ReticleOnFocus();
 		return;
 	}
+	PadSaturn_FactoryList(list, &direction);
 	if (direction != NO_DIRECTION && s_focus != NULL) {
 		Widget *next = PadSaturn_MoveFocus(list, direction);
+
+		/* into the construction list: at its selected item */
+		if (next != NULL && next != s_focus && next->clickProc == &GUI_Production_List_Click) {
+			Widget *selected = GUI_Widget_Get_ByIndex(list, 46 + g_factoryWindowSelected);
+
+			if (selected != NULL && selected != next && PadSaturn_Focusable(selected)) {
+				int x, y;
+
+				next = selected;
+				PadSaturn_WidgetPosition(next, &x, &y);
+				PadSaturn_SetPosition((uint16)(x + next->width / 2), (uint16)(y + next->height / 2));
+			}
+		}
 		if (next != s_focus) PadSaturn_Blip();
 		s_focus = next;
 	}
