@@ -410,7 +410,18 @@ static void OplScsp_KeyOn(int channel, int op)
 	if (slow) {
 		/* attack from the current level, as the OPL does; the slot stays
 		 * keyed on if it still is, so the SCSP doesn't restart its envelope */
-		if (!o->soft || !o->slotOn) o->att = ATT_MAX;
+		if (!o->slotOn) o->att = ATT_MAX;
+		if (!o->soft && o->slotOn) {
+			/* but if the SCSP's own envelope plays the note (after its
+			 * attack), it has decayed: with this note's rates of 0 it would
+			 * stay there, and the note that much quieter. Take its level
+			 * (3 dB steps, 16 envelope units each) and restart it at full. */
+			o->att = Scsp_EnvelopeLevel(slot) * (16 << 16);
+			if (o->att > ATT_MAX) o->att = ATT_MAX;
+			Scsp_Key(slot, 0);
+			o->slotOn = 0;
+			SaturnTimer_DelayUs(30);
+		}
 		o->soft = 1;
 		o->phase = ENV_ATTACK;
 		OplScsp_Setup(channel, op);

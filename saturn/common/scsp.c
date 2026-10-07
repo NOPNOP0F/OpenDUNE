@@ -11,6 +11,8 @@
 
 #define SCSP_RAM        ((volatile uint16_t *)0x25A00000UL)
 #define SCSP_SLOT(n, r) REG16(0x25B00000UL + (n) * 0x20 + (r))
+/* MSLC (write) and the monitored slot's state (read) */
+#define SCSP_MONITOR    REG16(0x25B00408UL)
 #define SCSP_COMMON     REG16(0x25B00400UL)
 #define SCSP_TIMER_A    REG16(0x25B00418UL)                 /*!< TACTL (10-8), TIMA (7-0) */
 #define SCSP_MCIEB      REG16(0x25B0042AUL)                 /*!< main CPU interrupt enable */
@@ -216,6 +218,19 @@ void Scsp_SlotWrite(int slot, int reg, uint16_t value)
 uint16_t Scsp_SlotRead(int slot, int reg)
 {
 	return SCSP_SLOT(slot, reg);
+}
+
+/**
+ * A slot's envelope level now, through the monitor register (MSLC): 0 at
+ * full volume to 31 silent, in steps of 3 dB.
+ *
+ * @param slot The slot.
+ * @return The level.
+ */
+int Scsp_EnvelopeLevel(int slot)
+{
+	SCSP_MONITOR = (uint16_t)(slot << 11);
+	return SCSP_MONITOR & 0x1F;
 }
 
 /**

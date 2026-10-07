@@ -55,6 +55,7 @@ extern void Scsp_SlotWrite(int slot, int reg, uint16_t value);
 extern uint16_t Scsp_SlotRead(int slot, int reg);
 
 extern void Scsp_Key(int slot, int on);
+extern int Scsp_EnvelopeLevel(int slot);
 
 /* Samples of silence a one-shot needs after its data (see Scsp_Play). */
 enum { SCSP_TAIL = 32 };
