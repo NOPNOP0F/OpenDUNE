@@ -2,17 +2,22 @@
  *
  * Each of the 9 OPL channels gets two SCSP slots, modulator and carrier,
  * playing one of the four OPL waveforms from a 1024-sample 16-bit table
- * (the SCSP's FM depth, MDL, is defined for 1024-sample waves):
+ * holding 4 periods of 256 samples: the SCSP's modulation goes up to
+ * +-1024 samples (beyond, it wraps round into noise), which is then the
+ * OPL's +-8 pi, the depth of a full-level modulator:
  *   frequency   fnum * 49716 / 2^(20 - block) * multiple, as OCT/FNS;
  *               channels sounding above 15 kHz drop by octaves to 10 kHz or
  *               below, 9 dB quieter (at the OPL's 49.7 kHz the credits'
  *               20 kHz tone is barely heard, its audible sidebands 9 dB down;
  *               at the SCSP's 44.1 kHz its FM would fold back into piercing
  *               tones)
- *   FM          carrier modulated by the modulator's output, MDL 0xC
+ *   FM          carrier modulated by the modulator's output, MDL 0xA
  *               (+-8 pi, like the OPL's full-level modulator); additive
  *               channels instead send both slots to the output
- *   feedback    the modulator modulates itself, MDL = feedback + 4
+ *   feedback    the modulator modulates itself by its last two outputs,
+ *               summed as on the OPL, MDL = feedback + 1 (matched against
+ *               a recording of the DOS game; feedback 1-3 fall below the
+ *               SCSP's smallest depth, MDL 5, and go without)
  *   envelope    operators with a fast attack use the SCSP's envelope:
  *               OPL rates 0-15 -> SCSP attack 2 * rate + 1, decay and
  *               release 2 * rate + 2.25 (YM3812 datasheet times matched to
@@ -42,6 +47,7 @@ enum {
 	CHANNELS = 9,
 	FIRST_SLOT = 1, /*!< slot 0 plays speech */
 	WAVE_SAMPLES = 1024,
+	WAVE_PERIOD = 256,  /*!< samples of one period: 4 in the table */
 	MIX_LEVEL = 5,      /*!< DISDL of sounding operators: -12 dB */
 	X_MAX = 632739,     /*!< 15 kHz in OplScsp_Frequency() units */
 	X_SHIFTED = 421826, /*!< 10 kHz: where tones above X_MAX drop to */
@@ -122,9 +128,11 @@ static int OplScsp_BuildWaves(void)
 		int32_t offset = Scsp_Alloc(sizeof(wave));
 		if (offset < 0) return 0;
 		for (n = 0; n < WAVE_SAMPLES; n++) {
-			int q = n % (WAVE_SAMPLES / 2);
+			/* the position in its period, at the quarter table's resolution */
+			int p = (n % WAVE_PERIOD) * (WAVE_SAMPLES / WAVE_PERIOD);
+			int q = p % (WAVE_SAMPLES / 2);
 			int32_t sine = (q <= WAVE_SAMPLES / 4) ? quarter[q] : quarter[WAVE_SAMPLES / 2 - q];
-			bool secondHalf = n >= WAVE_SAMPLES / 2;
+			bool secondHalf = p >= WAVE_SAMPLES / 2;
 			int32_t value;
 			switch (w) {
 				default:
@@ -174,7 +182,7 @@ static uint32_t OplScsp_ChannelTop(int channel)
 }
 
 /**
- * OCT/FNS for an operator: a 1024-sample wave at the operator frequency.
+ * OCT/FNS for an operator: a 256-sample period at the operator frequency.
  * A channel whose sounding tone is above 15 kHz (the credits counting down
  * is at 20 kHz, which aliases on the SCSP) drops by octaves to 10 kHz or
  * below, both operators alike to keep the timbre.
@@ -194,8 +202,8 @@ static uint16_t OplScsp_Pitch(int channel, int op)
 		while (top > X_SHIFTED) { top >>= 1; x >>= 1; }
 	}
 
-	/* rate / 44100 in 16.16: x * 49716 * 1024 / 2^20 / 44100 / 2 = x * 36.0751 */
-	ratio = ((uint64_t)x * 2364218) >> 16;
+	/* rate / 44100 in 16.16: x * 49716 * 256 / 2^20 / 44100 / 2 = x * 9.01877 */
+	ratio = ((uint64_t)x * 2364218) >> 18;
 	if (ratio == 0) return Scsp_Pitch(-8, 0);
 	while (ratio >= (2u << 16)) { ratio >>= 1; octave++; }
 	while (ratio < (1u << 16)) { ratio <<= 1; octave--; }
@@ -360,12 +368,15 @@ static void OplScsp_Setup(int channel, int op)
 	}
 
 	if (op == 0 && (c0 & 0x0E)) {
-		/* feedback: the modulator's own previous output */
-		modulation = (uint16_t)((((c0 >> 1) & 7) + 4) << 12);
+		/* feedback: the modulator's own last two outputs, summed, as the
+		 * OPL does. In the SCSP's stack of the last 64 slot outputs, offset
+		 * 0 is this slot two samples ago and 32 one sample ago; the older
+		 * alone makes strong feedback chaotic: noise instead of a tone. */
+		modulation = (uint16_t)(((((c0 >> 1) & 7) + 1) << 12) | 32);
 	} else if (op == 1 && !additive) {
 		/* the modulator's output moves the carrier's phase */
 		uint16_t source = (uint16_t)((OplScsp_Slot(channel, 0) - slot) & 0x3F);
-		modulation = (uint16_t)((0xC << 12) | (source << 6) | source);
+		modulation = (uint16_t)((0xA << 12) | (source << 6) | source);
 	}
 
 	o->level = (uint8_t)level;
