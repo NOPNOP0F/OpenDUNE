@@ -143,6 +143,12 @@ enum {
 	KEY_SIDE_BAR = 0x7C
 };
 
+/* the game screen: the side bar, right of the map, and the Options button */
+enum {
+	SIDE_BAR_X = 240,
+	WIDGET_OPTIONS = 2
+};
+
 /* Saturn keyboard key numbers (PS/2 set 2) standing in for pad buttons */
 enum {
 	KEY_TAB = 0x0D,
@@ -1193,6 +1199,40 @@ static bool PadSaturn_InList(Widget *list, Widget *w)
 }
 
 /**
+ * Where the focus goes back to from the camera when the button focused
+ * before is gone: the side bar's button nearest the cursor, or Options if
+ * the side bar has none.
+ *
+ * @param list The widgets of the screen.
+ * @return The widget, or NULL.
+ */
+static Widget *PadSaturn_SideBarFocus(Widget *list)
+{
+	Widget *w, *best = NULL;
+	long bestScore = 0;
+
+	for (w = list; w != NULL; w = GUI_Widget_GetNext(w)) {
+		int x, y;
+		long dx, dy, score;
+
+		if (!PadSaturn_Focusable(w)) continue;
+		PadSaturn_WidgetPosition(w, &x, &y);
+		if (x < SIDE_BAR_X) continue;
+		dx = x + w->width / 2 - s_x;
+		dy = y + w->height / 2 - s_y;
+		score = dx * dx + dy * dy;
+		if (best == NULL || score < bestScore) {
+			best = w;
+			bestScore = score;
+		}
+	}
+	if (best != NULL) return best;
+
+	w = GUI_Widget_Get_ByIndex(list, WIDGET_OPTIONS);
+	return PadSaturn_InList(list, w) ? w : NULL;
+}
+
+/**
  * The 3D Controller's stick, off the camera: scrolls the screen's list, a
  * line each time enough travel has been summed up.
  *
@@ -1842,18 +1882,17 @@ void PadSaturn_HandleEvents(Widget *list)
 
 	if (s_cameraActive) {
 		/* back from the camera: the button focused before, if it is still
-		 * shown, or else the nearest one */
+		 * shown, or else one in the side bar, or else Options */
 		PadSaturn_ReleaseA();
 		s_cameraActive = false;
 		s_reticleSnap = false;
 		s_edgeX = s_edgeY = 0;
-		if (PadSaturn_InList(list, s_focus)) {
+		if (!PadSaturn_InList(list, s_focus)) s_focus = PadSaturn_SideBarFocus(list);
+		if (s_focus != NULL) {
 			int x, y;
 
 			PadSaturn_WidgetPosition(s_focus, &x, &y);
 			PadSaturn_SetPosition((uint16)(x + s_focus->width / 2), (uint16)(y + s_focus->height / 2));
-		} else {
-			s_focus = NULL;
 		}
 	}
 	PadSaturn_StickScroll(list);
