@@ -22,6 +22,7 @@ extern void *DSP_Saturn_KeepVoc(void *voc, uint32 *size);
 extern void DSP_Saturn_FreeVoc(void *data);
 extern bool DSP_Saturn_CanKeep(uint32 fileSize);
 extern void DSP_Saturn_Blip(DSPBlip blip);
+extern void DSP_Saturn_PlayEffect(const uint8 *data);
 extern bool DSP_Saturn_IsPlaying(const void *data);
 #endif
 

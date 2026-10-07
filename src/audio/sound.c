@@ -270,6 +270,17 @@ void Voice_PlayAtTile(int16 voiceID, tile32 position)
 
 	index = g_table_voiceMapping[voiceID];
 
+#if defined(SATURN)
+	/* with a weightier voice speaking, DOS played the sound as music (FM or
+	 * MIDI), having only the one channel for samples; the Saturn plays the
+	 * sample beside the voice */
+	if (g_enableVoices != 0 && index != 0xFFFF && g_table_voices[index].priority < s_currentVoicePriority &&
+			(g_voiceData[index] != NULL || Voice_LoadWhenNeeded(index))) {
+		DSP_Saturn_PlayEffect((g_voiceData[index] != NULL) ? (const uint8 *)g_voiceData[index] : (const uint8 *)g_readBuffer);
+		return;
+	}
+#endif
+
 	if (g_enableVoices != 0 && index != 0xFFFF && g_table_voices[index].priority >= s_currentVoicePriority &&
 			(g_voiceData[index] != NULL || Voice_LoadWhenNeeded(index))) {
 		s_currentVoicePriority = g_table_voices[index].priority;

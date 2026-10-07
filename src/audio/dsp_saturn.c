@@ -20,11 +20,14 @@
 
 enum {
 	VOICE_SLOT = 0,
+	EFFECT_SLOT = 30,         /*!< a sound effect beside the voice (DSP_Saturn_PlayEffect()) */
 	BLIP_SLOT = 31,           /*!< free: voices use 0, the AdLib music 1-18 */
 	BLIP_TAIL = 32,           /*!< samples of silence played round after a blip */
 	SINE_BITS = 12,           /*!< the blips' sine table: 4096 entries */
 	SCRATCH_SIZE = 32 * 1024, /*!< g_readBuffer is at most 28000 bytes */
 	SCRATCH_MAX = SCRATCH_SIZE - SCSP_TAIL,
+	EFFECT_SCRATCH_SIZE = 20 * 1024, /*!< the largest sound effect (STATICP.VOC) is 19684 bytes */
+	EFFECT_SCRATCH_MAX = EFFECT_SCRATCH_SIZE - SCSP_TAIL,
 	DESCRIPTOR_MAGIC = 0x534E4431 /*!< "SND1" */
 };
 
@@ -98,6 +101,8 @@ static bool s_ready = false;
 static int32 s_scratch = -1;
 static uint64_t s_endUs = 0; /*!< time (SaturnTimer_Us()) the playing voice ends */
 static int32 s_playing = -1; /*!< sound RAM offset of the voice on the slot, playing or done */
+static int32 s_effectScratch = -1;
+static int32 s_effectPlaying = -1; /*!< the same for the sound effect's slot */
 
 /**
  * Find the PCM data of a VOC: first block, type 1, 8-bit unsigned.
@@ -229,6 +234,7 @@ bool DSP_Init(void)
 	Scsp_Init();
 	s_scratch = Scsp_Alloc(SCRATCH_SIZE);
 	s_ready = (s_scratch >= 0);
+	s_effectScratch = Scsp_Alloc(EFFECT_SCRATCH_SIZE);
 
 	DSP_BuildSine();
 	DSP_BuildBuzz();
@@ -248,6 +254,8 @@ bool DSP_Init(void)
 void DSP_Uninit(void)
 {
 	DSP_Stop();
+	Scsp_Stop(EFFECT_SLOT);
+	s_effectPlaying = -1;
 	s_ready = false;
 }
 
@@ -301,6 +309,36 @@ void DSP_Play(const uint8 *data)
 	Scsp_UploadU8(s_scratch, pcm, length);
 	Scsp_UploadTail(s_scratch + (int32)((length + 1) & ~1u));
 	DSP_PlayFromSoundRam(s_scratch, length, rate);
+}
+
+/**
+ * Play a sound effect's VOC, or one kept in sound RAM (a descriptor from
+ * DSP_Saturn_KeepVoc()), on a slot of its own, beside the voice; the
+ * voice's status is not changed.
+ *
+ * @param data The VOC or the descriptor.
+ */
+void DSP_Saturn_PlayEffect(const uint8 *data)
+{
+	const SaturnVoice *voice = (const SaturnVoice *)data;
+	const uint8 *pcm;
+	uint32 length, rate;
+
+	if (!s_ready) return;
+	if (voice->magic == DESCRIPTOR_MAGIC) {
+		Scsp_Play(EFFECT_SLOT, voice->offset, voice->samples, voice->rate, 255);
+		s_effectPlaying = voice->offset;
+		return;
+	}
+
+	if (s_effectScratch < 0 || !DSP_ParseVoc(data, &pcm, &length, &rate)) return;
+	if (length > EFFECT_SCRATCH_MAX) length = EFFECT_SCRATCH_MAX;
+	/* (the slot is let go before its samples are overwritten) */
+	Scsp_Stop(EFFECT_SLOT);
+	Scsp_UploadU8(s_effectScratch, pcm, length);
+	Scsp_UploadTail(s_effectScratch + (int32)((length + 1) & ~1u));
+	Scsp_Play(EFFECT_SLOT, s_effectScratch, length, rate, 255);
+	s_effectPlaying = s_effectScratch;
 }
 
 /**
@@ -396,6 +434,10 @@ void DSP_Saturn_FreeVoc(void *data)
 		/* the slot loops round the end of the last voice even after it has
 		 * finished: let it go before the sound RAM is used for something else */
 		if (voice->offset == s_playing) DSP_Stop();
+		if (voice->offset == s_effectPlaying) {
+			Scsp_Stop(EFFECT_SLOT);
+			s_effectPlaying = -1;
+		}
 		Scsp_Free(voice->offset);
 	}
 	free(voice);
