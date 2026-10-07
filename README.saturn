@@ -40,7 +40,8 @@ Standard pad (after the Mega Drive version):
 - A: the left mouse button (press, select, target, place).
 - B: cancel (Esc).
 - X, Y, Z, R: the command buttons of the selected unit; with a structure
-  selected, X opens its menu and Y repairs or upgrades it.
+  selected, X opens its menu, Y repairs or upgrades it and Z presses its
+  build button (a Construction Yard's "Build it", then "Place it").
 - L: held, Shift (Ambush, Area Guard); a tap selects the next unit, C+L the
   next structure.
 - Start: options; C+Start: the Mentat.

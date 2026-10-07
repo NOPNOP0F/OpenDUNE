@@ -21,8 +21,9 @@
  *                target, place; hold to drag)
  *   B            cancel (Esc)
  *   X Y Z R      the selected unit's command buttons 1-4 in the side bar;
- *                with a structure selected, X opens its menu (F3) and Y
- *                repairs or upgrades it
+ *                with a structure selected, X opens its menu (F3), Y
+ *                repairs or upgrades it and Z presses its build button
+ *                (a Construction Yard's Build it, then Place it)
  *   L (hold)     Shift: with a command button, Ambush / Area Guard
  *   L (tap)      select your next unit and centre the view on it;
  *                C+L: your next structure
@@ -133,13 +134,13 @@ enum {
 };
 
 /* Dune II key codes: arrows and Return as lists take them, and one no key
- * sends (between F12 and Scroll Lock), given to the Repair/Upgrade button,
- * which has no shortcut of its own */
+ * sends (between F12 and Scroll Lock), lent to the side bar button the pad
+ * presses (Repair/Upgrade, Build it/Place it), which have no shortcut */
 enum {
 	KEY_RETURN = 0x2B,
 	KEY_ARROW_UP = 0x60,
 	KEY_ARROW_DOWN = 0x62,
-	KEY_REPAIR_UPGRADE = 0x7C
+	KEY_SIDE_BAR = 0x7C
 };
 
 /* Saturn keyboard key numbers (PS/2 set 2) standing in for pad buttons */
@@ -349,15 +350,22 @@ static void PadSaturn_CommandButton(uint16 index)
 }
 
 /**
- * Press the selected structure's Repair/Upgrade button (widget 4), if shown.
+ * Press a button of the selected structure in the side bar, if shown:
+ * Repair/Upgrade (widget 4) or the one that builds, places, launches...
+ * (widget 5, "Build it", "Place it").
+ *
+ * @param index The widget index, 4 or 5.
  */
-static void PadSaturn_RepairUpgrade(void)
+static void PadSaturn_SideBarButton(uint16 index)
 {
-	Widget *w = GUI_Widget_Get_ByIndex(g_widgetLinkedListHead, 4);
+	Widget *w = GUI_Widget_Get_ByIndex(g_widgetLinkedListHead, index);
+	Widget *other = GUI_Widget_Get_ByIndex(g_widgetLinkedListHead, (index == 4) ? 5 : 4);
 
 	if (w == NULL || w->flags.invisible) return;
-	w->shortcut = KEY_REPAIR_UPGRADE;
-	PadSaturn_Key(KEY_REPAIR_UPGRADE);
+	/* the key goes to one of them only */
+	if (other != NULL && other->shortcut == KEY_SIDE_BAR) other->shortcut = 0;
+	w->shortcut = KEY_SIDE_BAR;
+	PadSaturn_Key(KEY_SIDE_BAR);
 }
 
 /**
@@ -715,7 +723,8 @@ static void PadSaturn_Buttons(const SmpcDevice *d, Controller controller)
 
 	if (g_selectionType == SELECTIONTYPE_STRUCTURE) {
 		if (pressed & PAD_X) PadSaturn_KeyTap(SCANCODE_F3);
-		if (pressed & PAD_Y) PadSaturn_RepairUpgrade();
+		if (pressed & PAD_Y) PadSaturn_SideBarButton(4);
+		if (pressed & PAD_Z) PadSaturn_SideBarButton(5);
 	} else {
 		if (pressed & PAD_X) PadSaturn_CommandButton(8);
 		if (pressed & PAD_Y) PadSaturn_CommandButton(9);
