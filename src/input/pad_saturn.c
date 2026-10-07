@@ -296,17 +296,14 @@ static void PadSaturn_Blip(void)
 	if (g_gameConfig.sounds != 0) DSP_Saturn_Blip(DSP_BLIP_FOCUS);
 }
 
-static uint32 s_secondNoteFrame = 0; /*!< when the use sound's second note is due, or 0 */
 
 /**
- * The sound of pressing A on what is focused: a low note, then the focus
- * note (played by PadSaturn_Tick()).
+ * The sound of pressing A on what is focused.
  */
 static void PadSaturn_UseSound(void)
 {
 	if (g_gameConfig.sounds == 0) return;
 	DSP_Saturn_Blip(DSP_BLIP_USE);
-	s_secondNoteFrame = SaturnTimer_Frames() + 4;
 }
 
 /**
@@ -858,8 +855,7 @@ bool PadSaturn_PointerVisible(void)
 
 /**
  * Once a frame, from Video_Tick(): pick the controller and turn its buttons,
- * keys and movement into the engine's mouse and key events; move the reticle
- * and play the second note of the use sound.
+ * keys and movement into the engine's mouse and key events; move the reticle.
  */
 void PadSaturn_Tick(void)
 {
@@ -885,11 +881,6 @@ void PadSaturn_Tick(void)
 		case CONTROLLER_NONE: break;
 		case CONTROLLER_KEYBOARD_MOUSE: PadSaturn_KeyboardMouse(d); break;
 		default: PadSaturn_Buttons(&d[port], controller); break;
-	}
-
-	if (s_secondNoteFrame != 0 && SaturnTimer_Frames() >= s_secondNoteFrame) {
-		s_secondNoteFrame = 0;
-		DSP_Saturn_Blip(DSP_BLIP_FOCUS);
 	}
 
 	/* the pointer only with a mouse; the reticle only while the focus or

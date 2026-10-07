@@ -273,7 +273,7 @@ void Scsp_NoteOn(int slot, const ScspNote *note)
 	}
 	Cpu_RestoreInterrupts(sr);
 
-	SCSP_SLOT(slot, 0x00) = PCM_8BIT | ((note->loop ? 1 : 0) << 5) | ((note->offset >> 16) & 0xF);
+	SCSP_SLOT(slot, 0x00) = (note->pcm16 ? 0 : PCM_8BIT) | ((note->loop ? 1 : 0) << 5) | ((note->offset >> 16) & 0xF);
 	SCSP_SLOT(slot, 0x02) = (uint16_t)note->offset;
 	SCSP_SLOT(slot, 0x04) = note->loopStart;
 	SCSP_SLOT(slot, 0x06) = note->end;
@@ -352,6 +352,7 @@ void Scsp_Play(int slot, int32_t offset, uint32_t samples, uint32_t rate, uint8_
 	note.level = (uint8_t)((255 - volume) >> 1);
 	note.pitch = Scsp_Pitch(octave, (uint16_t)(f - 1024));
 	note.pan = 0;
+	note.pcm16 = 0;
 	Scsp_NoteOn(slot, &note);
 }
 

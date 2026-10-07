@@ -1,7 +1,7 @@
 /** @file saturn/common/scsp.h Sound through the SCSP, driven from the SH-2.
  *
  * The sound CPU (68000) is stopped; the SH-2 writes sound RAM and the slot
- * registers itself. Samples are signed 8-bit PCM in sound RAM. */
+ * registers itself. Samples are signed 8-bit (or 16-bit) PCM in sound RAM. */
 
 #ifndef SATURN_SCSP_H
 #define SATURN_SCSP_H
@@ -20,7 +20,7 @@ extern uint32_t Scsp_LargestFree(void);
 
 extern void Scsp_UploadU8(int32_t offset, const uint8_t *pcm, uint32_t length);
 
-/* A note on one slot: signed 8-bit samples in sound RAM. */
+/* A note on one slot: signed 8-bit (or 16-bit) samples in sound RAM. */
 typedef struct ScspNote {
 	int32_t offset;     /*!< start in sound RAM */
 	uint16_t loopStart; /*!< in samples */
@@ -31,6 +31,7 @@ typedef struct ScspNote {
 	uint8_t level;  /*!< TL: attenuation, 0.375 dB units */
 	uint16_t pitch; /*!< OCT/FNS register value (Scsp_Pitch()) */
 	uint8_t pan;    /*!< DIPAN register value */
+	uint8_t pcm16;  /*!< 1: 16-bit samples */
 } ScspNote;
 
 /**

@@ -21,7 +21,8 @@
 enum {
 	VOICE_SLOT = 0,
 	BLIP_SLOT = 31,           /*!< free: voices use 0, the AdLib music 1-18 */
-	BLIP_SAMPLES = 32,        /*!< one cycle of a sine */
+	BLIP_TAIL = 32,           /*!< samples of silence played round after a blip */
+	SINE_BITS = 12,           /*!< the blips' sine table: 4096 entries */
 	SCRATCH_SIZE = 32 * 1024, /*!< g_readBuffer is at most 28000 bytes */
 	SCRATCH_MAX = SCRATCH_SIZE - SCSP_TAIL,
 	DESCRIPTOR_MAGIC = 0x534E4431 /*!< "SND1" */
@@ -35,11 +36,42 @@ typedef struct SaturnVoice {
 	uint32 rate;
 } SaturnVoice;
 
+/* One FM note of a blip (in samples at 44.1 kHz, phase steps in 2^32 a
+ * cycle): it holds a moment, then dies away exponentially. */
+typedef struct BlipNote {
+	uint32 start;     /*!< where it starts; it stops where the next one does */
+	uint32 carrier;   /*!< phase step of the sounding operator */
+	uint32 modulator; /*!< and of the one modulating it */
+	int32 depth;      /*!< modulation: phase per unit of the sine table */
+	uint32 hold;      /*!< samples at full level */
+	int32 decay;      /*!< level kept per sample after that, Q30 */
+} BlipNote;
+
+/* The pad's sounds, recreated from the Mega Drive version's (measured from
+ * recordings): moving the focus is a 1204 Hz sine dying away in some 200 ms,
+ * using what is focused two FM notes, 932 then 1176 Hz 65 ms later (carrier
+ * at 3 and modulator at 5 times the note, index 1.1), each gone in 80 ms. */
+static const BlipNote s_focusNotes[] = {
+	{ 0, 117259425, 0, 0, 529, 1072873198 }
+};
+static const BlipNote s_useNotes[] = {
+	{ 0, 272423640, 454039400, 22948, 353, 1071361785 },
+	{ 2867, 343451296, 572418827, 22948, 353, 1071361785 }
+};
+
+typedef struct Blip {
+	int32 offset;   /*!< in sound RAM, -1 if there was no room */
+	uint16 samples; /*!< before the silent tail */
+	uint8 level;    /*!< TL */
+} Blip;
+
+static Blip s_blips[2] = { { -1, 0, 0 }, { -1, 0, 0 } };
+static int16 s_sine[1 << SINE_BITS];
+
 static bool s_ready = false;
 static int32 s_scratch = -1;
 static uint64_t s_endUs = 0; /*!< time (SaturnTimer_Us()) the playing voice ends */
 static int32 s_playing = -1; /*!< sound RAM offset of the voice on the slot, playing or done */
-static int32 s_blip = -1;    /*!< the blip's wave in sound RAM */
 
 /**
  * Find the PCM data of a VOC: first block, type 1, 8-bit unsigned.
@@ -65,6 +97,66 @@ static bool DSP_ParseVoc(const uint8 *data, const uint8 **pcm, uint32 *length, u
 }
 
 /**
+ * The blips' sine table, from the recurrence s[n+1] = 2 cos(w) s[n] - s[n-1]
+ * (no floating point on the SH-2).
+ */
+static void DSP_BuildSine(void)
+{
+	/* 2 cos(2 pi / 4096), Q30; sin(2 pi / 4096) * 32767, 16.16 */
+	int64_t prev = 0, cur = 3294097;
+	int n;
+
+	for (n = 0; n < (1 << SINE_BITS); n++) {
+		int64_t next = ((2147481121LL * cur) >> 30) - prev;
+		s_sine[n] = (int16)((prev + 0x8000) >> 16);
+		prev = cur;
+		cur = next;
+	}
+}
+
+/**
+ * Render a blip's notes as 16-bit samples into sound RAM, followed by its
+ * silent tail.
+ *
+ * @param b Filled with where it is.
+ * @param notes The notes.
+ * @param count How many.
+ * @param samples Its length before the tail.
+ * @param level Its TL.
+ */
+static void DSP_RenderBlip(Blip *b, const BlipNote *notes, int count, uint32 samples, uint8 level)
+{
+	int16 *pcm = calloc(samples + BLIP_TAIL, sizeof(int16));
+	int k;
+
+	b->offset = -1;
+	if (pcm == NULL) return;
+	for (k = 0; k < count; k++) {
+		const BlipNote *note = &notes[k];
+		uint32 end = (k + 1 < count) ? notes[k + 1].start : samples;
+		uint32 carrier = 0, modulator = 0, n;
+		int64_t amp = (int64_t)1 << 30;
+
+		for (n = note->start; n < end && n < samples; n++) {
+			int32 mod = s_sine[modulator >> (32 - SINE_BITS)] * note->depth;
+			int32 v = s_sine[(uint32)(carrier + (uint32)mod) >> (32 - SINE_BITS)];
+
+			pcm[n] = (int16)((v * amp) >> 30);
+			carrier += note->carrier;
+			modulator += note->modulator;
+			if (n - note->start >= note->hold) amp = (amp * note->decay) >> 30;
+		}
+	}
+	b->offset = Scsp_Alloc((samples + BLIP_TAIL) * sizeof(int16));
+	if (b->offset >= 0) {
+		Scsp_UploadS16(b->offset, pcm, samples + BLIP_TAIL);
+		b->samples = (uint16)samples;
+		b->level = level;
+	}
+	free(pcm);
+}
+
+/**
  * Set up the voices: the SCSP and the scratch area in sound RAM for VOCs loaded
  * when needed.
  *
@@ -76,15 +168,10 @@ bool DSP_Init(void)
 	s_scratch = Scsp_Alloc(SCRATCH_SIZE);
 	s_ready = (s_scratch >= 0);
 
-	/* the blip: a cycle of a sine, played round and round */
-	s_blip = Scsp_Alloc(BLIP_SAMPLES);
-	if (s_blip >= 0) {
-		static const uint8 sine[BLIP_SAMPLES] = {
-			128, 153, 177, 199, 218, 234, 245, 252, 255, 252, 245, 234, 218, 199, 177, 153,
-			128, 103, 79, 57, 38, 22, 11, 4, 1, 4, 11, 22, 38, 57, 79, 103
-		};
-		Scsp_UploadU8(s_blip, sine, BLIP_SAMPLES);
-	}
+	DSP_BuildSine();
+	DSP_RenderBlip(&s_blips[DSP_BLIP_FOCUS], s_focusNotes, (int)(sizeof(s_focusNotes) / sizeof(s_focusNotes[0])), 9100, 0x28);
+	/* 4.7 dB louder, as in the Mega Drive version */
+	DSP_RenderBlip(&s_blips[DSP_BLIP_USE], s_useNotes, (int)(sizeof(s_useNotes) / sizeof(s_useNotes[0])), 6400, 0x1B);
 	return s_ready;
 }
 
@@ -166,29 +253,24 @@ uint8 DSP_GetStatus(void)
  */
 void DSP_Saturn_Blip(DSPBlip blip)
 {
+	const Blip *b = &s_blips[blip];
 	ScspNote note;
 
-	if (s_blip < 0) return;
-	note.offset = s_blip;
-	note.loopStart = 0;
-	note.end = BLIP_SAMPLES - 1;
+	if (b->offset < 0) return;
+	/* once through, then round the silent tail */
+	note.offset = b->offset;
+	note.loopStart = b->samples;
+	note.end = (uint16)(b->samples + BLIP_TAIL - 1);
 	note.loop = 1;
 	note.attack = 31;
-	note.decayLevel = 31;
+	note.decay1 = 0;
+	note.decayLevel = 0;
+	note.decay2 = 0;
 	note.release = 31;
+	note.level = b->level;
+	note.pitch = Scsp_Pitch(0, 0);
 	note.pan = 0;
-	if (blip == DSP_BLIP_USE) {
-		/* about 880 Hz (32 samples a cycle at 28.2 kHz), some 250 ms */
-		note.decay1 = note.decay2 = 19;
-		note.level = 0x20;
-		note.pitch = Scsp_Pitch(-1, 284);
-	} else {
-		/* about 1.4 kHz (32 samples a cycle at 44.8 kHz), dying away in
-		 * some 130 ms like the game's own blip (effect 38) */
-		note.decay1 = note.decay2 = 21;
-		note.level = 0x28;
-		note.pitch = Scsp_Pitch(0, 16);
-	}
+	note.pcm16 = 1;
 	Scsp_NoteOn(BLIP_SLOT, &note);
 }
 
