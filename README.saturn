@@ -22,7 +22,11 @@ Sega's Saturn Basic Library (SBL 6), which is not included.
 `make -C saturn`
 
 This needs xorriso and python3, and makes the disc image
-saturn/build/opendune.cue (with opendune.iso).
+saturn/build/opendune.cue (with opendune.iso). IMAGE=... names it instead:
+
+`make -C saturn IMAGE="Dune II"`
+
+makes saturn/build/Dune II.cue (with Dune II.iso).
 
 The game has been tested in the Ymir emulator and on the real Sega Saturn hardware.
 

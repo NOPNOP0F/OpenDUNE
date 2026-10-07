@@ -2,6 +2,7 @@
 #
 #   make            build build/opendune.cue
 #   make opendune   only the engine disc
+#   make IMAGE=name the disc image as build/name.cue and build/name.iso
 #   make clean
 #
 # Needs the toolchain from toolchain/build-toolchain.sh and the SDK in ../SSSDK.
@@ -20,6 +21,9 @@ BUILD     := build
 # Dune II v1.07 data files; only the PAK archives go on the disc
 DATA      ?= ../bin/data
 
+# name of the disc image, build/$(IMAGE).cue and .iso (spaces allowed)
+IMAGE     ?= opendune
+
 CFLAGS    := -m2 -O2 -std=gnu11 -Wall -Wextra -Icommon
 # C++ only for the AdLib driver: no exceptions, RTTI or C++ library
 CXXFLAGS  := -m2 -O2 -std=gnu++11 -Wall -fno-exceptions -fno-rtti -fno-use-cxa-atexit -fno-threadsafe-statics
@@ -31,7 +35,13 @@ SEGA_IP_OBJS := sys_sec sys_arej sys_aret sys_areu sys_aree sys_init
 
 .PHONY: all opendune clean
 all: opendune
+# under another name, the image is made again from the same disc tree when
+# build/opendune.iso is newer (a name with spaces can't be a make target)
 opendune: $(BUILD)/opendune.iso
+ifneq ($(IMAGE),opendune)
+	@[ "$(BUILD)/$(IMAGE).iso" -nt $(BUILD)/opendune.iso ] || \
+		tools/mkdisc.sh $(BUILD)/ip.bin $(BUILD)/opendune/disc "$(BUILD)/$(IMAGE)"
+endif
 
 # --- IP.BIN ---------------------------------------------------------------
 
