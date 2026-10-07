@@ -370,11 +370,14 @@ static void OplScsp_Setup(int channel, int op)
 
 	o->level = (uint8_t)level;
 	if (o->soft) {
-		/* the SCSP holds full level; the envelope comes through TL */
+		/* the SCSP holds full level; the envelope comes through TL. Its
+		 * decay level is the lowest, so its own envelope waits in decay 1
+		 * at full level: given the note's rates after the attack
+		 * (OplScsp_Update()), it carries on from there. */
 		OplScsp_EnvelopeRates(channel, op, rateOffset);
 		o->written = OplScsp_TotalLevel(o);
 		eg1 = 31;
-		eg2 = (uint16_t)((0xF << 10) | 31);
+		eg2 = (uint16_t)((0xF << 10) | (31 << 5) | 31);
 		level = o->written;
 	} else {
 		eg1 = (uint16_t)((sustain << 11) | (OplScsp_Rate(r60 & 0xF, rateOffset, 0) << 6) | OplScsp_Rate(r60 >> 4, rateOffset, 1));
@@ -542,6 +545,14 @@ void OplScsp_Update(void)
 
 			if (!o->soft || !o->slotOn) continue;
 			for (i = 0; i < steps && o->phase != ENV_OFF; i++) OplScsp_EnvelopeStep(o);
+
+			if (o->phase == ENV_DECAY || o->phase == ENV_SUSTAIN || o->phase == ENV_DECAY2) {
+				/* the attack is over: the SCSP's envelope does the rest,
+				 * smoothly (stepping TL each millisecond buzzes) */
+				o->soft = 0;
+				OplScsp_Setup(channel, op);
+				continue;
+			}
 
 			if (o->phase == ENV_OFF) {
 				Scsp_Key(OplScsp_Slot(channel, op), 0);
