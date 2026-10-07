@@ -4,7 +4,11 @@ The port is built on Linux with a GCC cross compiler for the SH-2 and
 Sega's Saturn Basic Library (SBL 6), which is not included.
 
 1. Build the sh-elf toolchain (binutils, GCC 14 with C and C++, newlib);
-   it is installed in saturn/toolchain/install:
+   it is installed in saturn/toolchain/install. This needs a C and C++
+   compiler for the host, make, curl, tar with xz and bzip2, and cmp
+   (diffutils); on Fedora:
+
+`dnf install gcc gcc-c++ make diffutils curl tar xz bzip2`
 
 `saturn/toolchain/build-toolchain.sh`
 
@@ -17,8 +21,8 @@ Sega's Saturn Basic Library (SBL 6), which is not included.
 
 `make -C saturn`
 
-This needs xorriso, and makes the disc image saturn/build/opendune.cue
-(with opendune.iso).
+This needs xorriso and python3, and makes the disc image
+saturn/build/opendune.cue (with opendune.iso).
 
 The game has been tested in the Ymir emulator and on the real Sega Saturn hardware.
 
